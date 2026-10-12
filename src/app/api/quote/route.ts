@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { QuoteResponse } from "@/features/cart/types";
 import { getQuoteOffers, MAX_QUOTE_IDS } from "@/server/services/quote";
+import { logError } from "@/server/errors/logError";
 
 /**
  * POST /api/quote   body: { ids: ["<uuid>", ...] }
@@ -48,7 +49,7 @@ export async function POST(request: Request): Promise<Response> {
     };
     return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    console.error("[quote]", error);
+    await logError({ source: "handled", error, path: "/api/quote", route: "/api/quote", method: "POST" });
     return NextResponse.json({ error: "unavailable" }, { status: 503 });
   }
 }

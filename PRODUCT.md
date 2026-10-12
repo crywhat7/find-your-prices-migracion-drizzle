@@ -82,6 +82,11 @@ producto hace.
   resto, una. Los catálogos grandes también se pueden correr a mano desde una
   computadora (`npm run scrape:local`). El catálogo cambia cuando corre el
   scraper, no cuando alguien visita.
+- **Errores:** todo lo que falla queda en `error_logs` (migración 0051) y se
+  ve agrupado en `/admin/errores`: errores del servidor (vía
+  `instrumentation.ts`), los que el código atrapa y muestra con un aviso
+  (`logError`), y los del navegador. El visitante nunca ve un mensaje
+  técnico: ve "Algo se trabó de nuestro lado" con un código de referencia.
 - **Caché:** portada 5 min; categorías, tiendas y fichas 1 h; aliados 15 min.
   Guardar desde el panel regenera lo que toca, y `/admin` tiene botones para
   tirar el caché a mano.

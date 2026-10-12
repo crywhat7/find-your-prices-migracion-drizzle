@@ -5,6 +5,7 @@ import type { Locale } from '@/features/i18n/translate';
 import { readVisitor } from '@/server/services/analytics';
 import { countRecentApplications, createApplication } from '@/server/services/affiliates';
 import { validateApplication, type ApplicationField } from './applicationRules';
+import { logError } from '@/server/errors/logError';
 
 /**
  * Recibe la solicitud de afiliación del formulario público de /aliados.
@@ -72,7 +73,7 @@ export async function submitAffiliateApplication(_previous: ApplyState, formData
     }
     await createApplication(result.data, locale, visitor.visitorHash);
   } catch (error) {
-    console.error('[aliados] no se pudo guardar la solicitud:', error);
+    await logError({ source: 'action', error, path: '/aliados', route: 'submitAffiliateApplication' });
     return { status: 'error', message: copy.failed, values };
   }
 

@@ -4,6 +4,7 @@ import { NO_INDEX_ROBOTS } from '@/lib/seo/metadata';
 import { CACHE_SCOPES, isCacheScope } from '@/server/services/cacheRefresh';
 import { lockAdmin, refreshCacheAction } from './actions';
 import { countNewApplications } from '@/server/services/affiliates';
+import { countOpenErrorGroups } from '@/server/errors/errorLog';
 import { hasAdminSession } from '@/server/admin/session';
 
 /**
@@ -23,6 +24,11 @@ interface Tool {
 }
 
 const TOOLS: Tool[] = [
+  {
+    href: '/admin/errores',
+    title: 'Errores',
+    description: 'Todo lo que falló: páginas, rutas, acciones, lo atrapado y lo del navegador. Agrupado y con su cuenta.',
+  },
   {
     href: '/admin/trafico',
     title: 'Tráfico',
@@ -68,7 +74,7 @@ export default async function AdminHubPage({ searchParams }: PageProps) {
   if (!(await hasAdminSession())) return null;
   const { cache, paths } = await searchParams;
   const refreshed = cache && isCacheScope(cache) ? CACHE_SCOPES.find((info) => info.scope === cache) : null;
-  const newApplications = await countNewApplications();
+  const [newApplications, openErrors] = await Promise.all([countNewApplications(), countOpenErrorGroups()]);
 
   return (
     <div className="min-h-screen bg-[var(--bg)]">
@@ -92,6 +98,20 @@ export default async function AdminHubPage({ searchParams }: PageProps) {
           </p>
           {/* Una tienda que pidió ser aliada no puede quedarse esperando: el
               aviso va arriba de todo hasta que alguien la atienda. */}
+          {openErrors > 0 && (
+            <Link
+              href="/admin/errores?range=24h"
+              className="enter mt-6 flex w-fit items-center gap-3 rounded-2xl bg-[var(--critical-soft)] px-4 py-3 text-[0.875rem] text-[var(--text)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--critical)]"
+            >
+              <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-[var(--critical)] px-1.5 text-[0.75rem] font-semibold tabular-nums text-white">
+                {openErrors}
+              </span>
+              {openErrors === 1
+                ? 'Un error sin resolver en las últimas 24 horas.'
+                : `${openErrors} errores distintos sin resolver en las últimas 24 horas.`}
+              <span aria-hidden="true" className="text-[var(--critical)]">→</span>
+            </Link>
+          )}
           {newApplications > 0 && (
             <Link
               href="/admin/aliados#solicitudes"

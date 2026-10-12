@@ -1,5 +1,6 @@
 import 'server-only';
 import { percentChange, resolveRange, type ResolvedRange } from '@/lib/analytics/ranges';
+import { logError } from '@/server/errors/logError';
 import {
   getAnalyticsReport,
   getAnalyticsTotals,
@@ -36,6 +37,7 @@ export async function loadTraffic(params: TrafficParams, limit = 12): Promise<Tr
     ]);
     return { range, report, previous, live, error: null };
   } catch (error) {
+    await logError({ source: 'handled', error, path: '/admin/trafico', route: '/admin/trafico', context: { range: range.key } });
     return { range, report: null, previous: null, live: 0, error: error instanceof Error ? error.message : String(error) };
   }
 }

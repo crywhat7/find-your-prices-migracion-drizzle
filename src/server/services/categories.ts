@@ -1,6 +1,7 @@
 import 'server-only';
 import { getSupabaseAdmin } from '@/server/db/supabase';
 import { toErrorResponse } from '@/server/scraping/api-guard';
+import { logError } from '@/server/errors/logError';
 import type {
   CanonicalCategory,
   CanonicalUsage,
@@ -72,6 +73,52 @@ export interface CategoryAdminData {
 }
 
 /** Todo lo que el panel necesita, en un viaje por tabla. */
+/**
+ * Conteo vivo por categoría de tienda: es lo que decide si vale la pena
+ * mapearla. Sale de `mv_catalog` (migración 0051), con el mismo piso que el
+ * catálogo.
+ *
+ * Antes salía de `v_catalog_category_facets`, que agrupa en vivo todo
+ * `store_products`: con ~130 000 artículos pasó el límite de 8 s de
+ * Supabase y el panel entero moría. Si la función todavía no existe, el
+ * panel carga sin conteos en vez de caerse, y el motivo queda en la
+ * bitácora de errores.
+ */
+async function loadStoreCategoryCounts(
+  db: ReturnType<typeof getSupabaseAdmin>,
+): Promise<Array<{ store_category_id: string; product_count: number }>> {
+  // Supabase devuelve como mucho 1000 filas por respuesta y hay más
+  // categorías de tienda que eso: se lee en páginas, ordenado para que las
+  // páginas no se pisen.
+  const rows: Array<{ store_category_id: string; product_count: number }> = [];
+  const pageSize = 1000;
+  let error: { code?: string; message: string } | null = null;
+  for (let from = 0; ; from += pageSize) {
+    const page = await db
+      .rpc('admin_store_category_counts')
+      .order('store_category_id')
+      .range(from, from + pageSize - 1);
+    if (page.error) {
+      error = page.error;
+      break;
+    }
+    const data = (page.data ?? []) as Array<{ store_category_id: string; product_count: number }>;
+    rows.push(...data);
+    if (data.length < pageSize) break;
+  }
+  if (error) {
+    await logError({
+      source: 'handled',
+      level: 'warning',
+      error: new Error(`Conteos por categoría de tienda no disponibles: ${error.message}`),
+      route: '/admin/categorias',
+      context: { code: error.code, hint: 'Correr la migración 0051_error_log_and_category_counts.sql' },
+    });
+    return [];
+  }
+  return rows;
+}
+
 export async function loadCategoryAdminData(): Promise<CategoryAdminData> {
   const db = getSupabaseAdmin();
 
@@ -93,14 +140,7 @@ export async function loadCategoryAdminData(): Promise<CategoryAdminData> {
         .range(from, to),
     ),
     db.from('stores').select('id, name, slug').order('name'),
-    // Conteo vivo por categoría de tienda: es lo que decide si vale la pena
-    // mapearla. La vista aplica el mismo piso que el catálogo.
-    fetchAll((from, to) =>
-      db
-        .from('v_catalog_category_facets')
-        .select('store_category_id, product_count')
-        .range(from, to),
-    ),
+    loadStoreCategoryCounts(db),
   ]);
 
   const failure = categories.error ?? stores.error;

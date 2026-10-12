@@ -3,6 +3,9 @@ import { NO_INDEX_ROBOTS } from '@/lib/seo/metadata';
 import { loadCategoryAdminData } from '@/server/services/categories';
 import { CategoryAdmin } from '@/features/admin-categories/CategoryAdmin';
 import { hasAdminSession } from '@/server/admin/session';
+import Link from 'next/link';
+import { AdminErrorNotice, retryLinkClass } from '@/features/errors/AdminErrorNotice';
+import { logError } from '@/server/errors/logError';
 
 /**
  * Panel de categorías.
@@ -24,15 +27,16 @@ export const dynamic = 'force-dynamic';
 
 type LoadResult =
   | { ok: true; data: Awaited<ReturnType<typeof loadCategoryAdminData>> }
-  | { ok: false; message: string };
+  | { ok: false; message: string; logId: number | null };
 
 async function load(): Promise<LoadResult> {
   try {
     return { ok: true, data: await loadCategoryAdminData() };
   } catch (error) {
-    // Antes de correr las migraciones el esquema no existe: se muestra el
-    // motivo en pantalla en vez de romper la página entera.
-    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+    // Se muestra un aviso en vez de romper la página entera, y el motivo
+    // queda en la bitácora: antes desaparecía con la recarga.
+    const logId = await logError({ source: 'handled', error, path: '/admin/categorias', route: '/admin/categorias' });
+    return { ok: false, message: error instanceof Error ? error.message : String(error), logId };
   }
 }
 
@@ -44,13 +48,33 @@ export default async function CategoryAdminPage() {
   if (result.ok) return <CategoryAdmin {...result.data} />;
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-24">
-      <h1 className="text-2xl font-semibold text-[var(--text)]">Panel de categorías</h1>
-      <div className="mt-6 rounded-2xl border border-red-500/25 bg-red-500/8 p-6">
-        <p className="text-sm font-medium text-red-700 dark:text-red-300">
-          No se pudo leer la base de datos
+    <div className="min-h-screen bg-[var(--bg)] px-6 pt-20 pb-12 sm:px-10 lg:px-16">
+      <div className="mx-auto w-full max-w-4xl">
+        <p className="text-[0.6875rem] font-medium tracking-[0.24em] text-[var(--text-tertiary)] uppercase">
+          <Link href="/admin" className="text-[var(--accent)] hover:opacity-70">
+            Panel
+          </Link>
         </p>
-        <p className="mt-2 font-mono text-xs text-[var(--text-secondary)]">{result.message}</p>
+        <h1 className="mt-6 text-[clamp(2rem,5vw,3.25rem)] leading-[0.95] font-semibold tracking-[-0.04em] text-[var(--text)]">
+          Árbol y mapeo de categorías
+        </h1>
+        <div className="mt-8">
+          <AdminErrorNotice
+            title="No se pudieron leer las categorías"
+            hint={
+              /timeout/i.test(result.message)
+                ? 'La base tardó demasiado en responder. Probá de nuevo en un momento; si se repite, revisá la bitácora.'
+                : undefined
+            }
+            detail={result.message}
+            logId={result.logId}
+            action={
+              <Link href="/admin/categorias" className={retryLinkClass}>
+                Reintentar
+              </Link>
+            }
+          />
+        </div>
       </div>
     </div>
   );

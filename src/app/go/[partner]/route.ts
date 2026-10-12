@@ -2,6 +2,7 @@ import { after, NextResponse } from "next/server";
 import { SITE_ROUTES } from "@/features/i18n/routes";
 import { resolveOutbound, type Outbound } from "@/server/services/affiliates";
 import { readVisitor, recordAffiliateClickEvent } from "@/server/services/analytics";
+import { logError } from "@/server/errors/logError";
 
 /**
  * GET /go/<aliado>[?o=<producto>]
@@ -35,7 +36,7 @@ export async function GET(
   try {
     outbound = await resolveOutbound(partner, offer && UUID_PATTERN.test(offer) ? offer : null);
   } catch (error) {
-    console.error("[go] no se pudo resolver el aliado:", error);
+    await logError({ source: "handled", error, path: `/go/${partner}`, route: "/go/[partner]", method: "GET" });
   }
 
   // El clic con fecha, país y dispositivo, para el reporte de aliados. Los

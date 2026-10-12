@@ -6,6 +6,7 @@ import { SiteNav } from "@/components/layout/SiteNav";
 import { LocaleProvider } from "@/features/i18n/LocaleContext";
 import { ProductClickTracker } from "@/features/products/ProductClickTracker";
 import { PageViewTracker } from "@/features/analytics/PageViewTracker";
+import { ClientErrorListener } from "@/features/errors/ClientErrorListener";
 import type { Locale } from "@/features/i18n/translate";
 import { ThemeProvider } from "@/features/theme/ThemeProvider";
 
@@ -51,6 +52,8 @@ export function PageLayout({ locale, localePaths, children }: PageLayoutProps) {
           <ProductClickTracker />
           {/* Y otro cuenta las visitas, para /admin/trafico. */}
           <PageViewTracker />
+          {/* Y los errores del navegador van a /admin/errores. */}
+          <ClientErrorListener />
           {/* Easter egg: Ctrl/Cmd + 0 + 0 + 0. */}
           <CrumbleEasterEgg />
         </div>

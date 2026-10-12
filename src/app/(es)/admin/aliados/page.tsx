@@ -13,6 +13,7 @@ import {
 } from '@/server/services/affiliates';
 import { createPartnerAction, updateApplicationAction } from './actions';
 import { hasAdminSession } from '@/server/admin/session';
+import { logError } from '@/server/errors/logError';
 
 /**
  * Programa de afiliados: la bandeja de solicitudes que llegan desde el
@@ -38,6 +39,7 @@ export default async function AffiliateAdminPage({ searchParams }: PageProps) {
     rows = await listPartnersForAdmin();
   } catch (error) {
     loadError = error instanceof Error ? error.message : String(error);
+    await logError({ source: 'handled', error, path: '/admin/aliados', route: '/admin/aliados' });
   }
 
   let applications: AffiliateApplication[] = [];
@@ -46,6 +48,7 @@ export default async function AffiliateAdminPage({ searchParams }: PageProps) {
     applications = await listApplications();
   } catch (error) {
     applicationsError = error instanceof Error ? error.message : String(error);
+    await logError({ source: 'handled', level: 'warning', error, path: '/admin/aliados', route: '/admin/aliados#solicitudes' });
   }
 
   const live = rows.filter((row) => row.isActive && isWithinWindow(row.startsAt, row.endsAt)).length;

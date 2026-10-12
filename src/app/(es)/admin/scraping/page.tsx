@@ -6,6 +6,7 @@ import { recoverStaleRuns } from '@/server/scraping/runner';
 import { ScrapingDashboard } from '@/features/admin-scraping/ScrapingDashboard';
 import type { RunSummary, StoreOption, TargetHealth } from '@/features/admin-scraping/types';
 import { hasAdminSession } from '@/server/admin/session';
+import { logError } from '@/server/errors/logError';
 
 /**
  * Panel de scraping.
@@ -86,7 +87,8 @@ async function loadDashboardData(): Promise<LoadResult> {
     };
   } catch (error) {
     // Antes de correr las migraciones el esquema no existe: se muestra el
-    // motivo en pantalla en vez de romper la pagina entera.
+    // motivo en pantalla en vez de romper la pagina entera. Y queda anotado.
+    await logError({ source: 'handled', error, path: '/admin/scraping', route: '/admin/scraping' });
     return {
       targets: [],
       stores: [],

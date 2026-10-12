@@ -1,6 +1,7 @@
 import 'server-only';
 import { getSupabaseAdmin } from '@/server/db/supabase';
 import { nextRunFromAnchor } from '@/lib/schedule';
+import { logError } from '@/server/errors/logError';
 import type {
   NormalizedCategory,
   NormalizedProduct,
@@ -458,7 +459,14 @@ export async function refreshCatalog(
     p_triggered_by: triggeredBy,
   });
   if (error) {
-    console.error(`[scraping] No se pudo refrescar el catalogo: ${error.message}`);
+    // Si esto falla, el catálogo público queda con los precios de la corrida
+    // anterior sin que nadie lo note: va a la bitácora.
+    await logError({
+      source: 'handled',
+      error: new Error(`No se pudo refrescar el catálogo: ${error.message}`),
+      route: 'refresh_catalog',
+      context: { triggeredBy, code: error.code },
+    });
     return null;
   }
   const payload = (data ?? {}) as { duration_ms?: number };
