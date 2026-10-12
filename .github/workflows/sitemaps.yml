@@ -1,0 +1,50 @@
+# Arma los sitemaps y los sube a Supabase Storage (bucket `sitemaps`).
+#
+# El sitio solo copia esos archivos: armarlos al vuelo en el Worker agotaba la
+# CPU (error 1102) y Google recibia 404, 503 o archivos truncados. Ver
+# scripts/generate-sitemaps.ts y src/server/services/sitemapStore.ts.
+#
+# Cada 6 horas alcanza: el sitemap dice que URLs existen, y eso cambia cuando
+# entra o sale un articulo, no con cada precio. Para forzarlo despues de un
+# scraping grande: Actions > Sitemaps > Run workflow.
+#
+# Secretos de repositorio requeridos (los mismos del scraping):
+#   NEXT_PUBLIC_SUPABASE_URL
+#   SUPABASE_SECRET_KEY
+
+name: Sitemaps
+
+on:
+  schedule:
+    # UTC. A los :30 para no pisarse con la tanda de scraping de la hora en punto.
+    - cron: '30 */6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: sitemaps
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Generar y subir
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          NEXT_PUBLIC_SITE_URL: https://findyourprices.com
+        run: npm run sitemaps:generate

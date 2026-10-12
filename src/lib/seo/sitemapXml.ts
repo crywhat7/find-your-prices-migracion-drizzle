@@ -122,13 +122,13 @@ ${body}
 /**
  * Respuesta XML con caché.
  *
- * `s-maxage` alto y `stale-while-revalidate` largo porque un sitemap de 10 000
- * fichas cuesta diez consultas a la base y Google lo pide seguido: sin caché,
- * cada visita del rastreador sería una tanda de consultas completa. El
- * contenido tolera estar minutos desactualizado — un artículo nuevo entra al
- * sitemap en la siguiente revalidación, no en el mismo segundo.
+ * `s-maxage` alto y `stale-while-revalidate` largo porque Google pide los
+ * sitemaps seguido y el contenido tolera estar minutos desactualizado — un
+ * artículo nuevo entra al sitemap en la siguiente generación, no en el mismo
+ * segundo. El cuerpo puede ser un stream: así se pasa el archivo guardado en
+ * Storage sin leerlo (ver `server/services/sitemapStore.ts`).
  */
-export function xmlResponse(body: string, maxAgeSeconds = 3600): Response {
+export function xmlResponse(body: BodyInit, maxAgeSeconds = 3600): Response {
   return new Response(body, {
     headers: {
       "Content-Type": "application/xml; charset=utf-8",

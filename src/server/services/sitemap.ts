@@ -86,22 +86,20 @@ let slugColumnPublished = true;
 /**
  * Cuántos artículos entran al sitemap. De acá sale el número de archivos que
  * lista el índice.
+ *
+ * Lanza si la base falla, y a propósito. Antes devolvía 0, y el índice salía
+ * con 200 y sin un solo archivo de producto: para Google eso es "el catálogo
+ * ya no existe", no "volvé más tarde". Quien llama responde 503, que es lo que
+ * le dice al rastreador que reintente sin tocar lo que ya tiene indexado.
  */
 export async function countSitemapProducts(): Promise<number> {
-  try {
-    const { count, error } = await getSupabaseAdmin()
-      .from(VIEW)
-      .select('id', { count: 'exact', head: true })
-      .gt('price', 0);
+  const { count, error } = await getSupabaseAdmin()
+    .from(VIEW)
+    .select('id', { count: 'exact', head: true })
+    .gt('price', 0);
 
-    if (error) return 0;
-    return count ?? 0;
-  } catch {
-    // Sin base, el índice sale sin sitemaps de producto en vez de romperse:
-    // un sitemap índice que responde 500 hace que Google deje de pedir todos
-    // los demás, incluido el de las páginas fijas que sí funcionaría.
-    return 0;
-  }
+  if (error) throw new Error(`No se pudo contar el catálogo del sitemap: ${error.message}`);
+  return count ?? 0;
 }
 
 /** Cuántos archivos de producto hacen falta para el catálogo actual. */
@@ -111,6 +109,14 @@ export function sitemapChunkCount(totalProducts: number): number {
 
 /**
  * Una tanda de artículos para el archivo número `chunk` (base 1).
+ *
+ * Es el camino de respaldo, el que se usa cuando el archivo todavía no está
+ * en Storage (ver `scripts/generate-sitemaps.ts`). Pagina por `OFFSET`, que en
+ * las últimas tandas es lento; el script recorre el catálogo por cursor.
+ *
+ * Lanza si cualquier viaje falla. Antes cortaba en silencio y servía el
+ * archivo a medias con 200: Google leía 1 000 fichas donde había 2 500 y daba
+ * por retiradas las otras 1 500.
  *
  * El orden por `id` es obligatorio, no estético: sin un orden estable, dos
  * archivos consecutivos pueden repetirse artículos y saltarse otros, y el
@@ -122,70 +128,108 @@ export async function getSitemapProducts(chunk: number): Promise<SitemapProduct[
   const start = (chunk - 1) * SITEMAP_CHUNK_SIZE;
   const results: SitemapProduct[] = [];
 
-  try {
-    const db = getSupabaseAdmin();
+  for (let offset = 0; offset < SITEMAP_CHUNK_SIZE; offset += FETCH_PAGE) {
+    const from = start + offset;
+    /**
+     * El último viaje se recorta al borde de la tanda.
+     *
+     * Sin esto se pide siempre un lote entero y la tanda se pasa de largo:
+     * con tandas de 2 500 y lotes de 1 000 se traían 3 000, así que el
+     * archivo 1 llevaba las filas 0–2999 y el archivo 2 empezaba en la 2 500.
+     * Quinientas fichas repetidas en cada frontera, y ni el archivo ni el
+     * protocolo se quejan —Google simplemente las rastrea dos veces.
+     *
+     * El fallo estaba escondido porque con tandas de 10 000 la división daba
+     * exacta (10 lotes de 1 000) y nunca sobraba nada.
+     */
+    const size = Math.min(FETCH_PAGE, SITEMAP_CHUNK_SIZE - offset);
 
-    for (let offset = 0; offset < SITEMAP_CHUNK_SIZE; offset += FETCH_PAGE) {
-      const from = start + offset;
-      /**
-       * El último viaje se recorta al borde de la tanda.
-       *
-       * Sin esto se pide siempre un lote entero y la tanda se pasa de largo:
-       * con tandas de 2 500 y lotes de 1 000 se traían 3 000, así que el
-       * archivo 1 llevaba las filas 0–2999 y el archivo 2 empezaba en la 2 500.
-       * Quinientas fichas repetidas en cada frontera, y ni el archivo ni el
-       * protocolo se quejan —Google simplemente las rastrea dos veces.
-       *
-       * El fallo estaba escondido porque con tandas de 10 000 la división daba
-       * exacta (10 lotes de 1 000) y nunca sobraba nada.
-       */
-      const size = Math.min(FETCH_PAGE, SITEMAP_CHUNK_SIZE - offset);
+    const rows = await selectProducts((query) => query.range(from, from + size - 1));
+    if (rows.length === 0) break;
+    results.push(...rows);
 
-      /**
-       * El slug se pide sólo si la vista lo publica. Sin esta comprobación, un
-       * despliegue anterior a la migración 0021 haría fallar la consulta entera
-       * (error 42703) y todos los archivos de producto responderían 404 —que
-       * es exactamente lo que Search Console reporta como "no se ha podido
-       * obtener" y lo que hace que Google deje de rastrear el catálogo.
-       */
-      const select = () =>
-        db
-          .from(VIEW)
-          .select(slugColumnPublished ? 'id, public_slug, last_seen_at' : 'id, last_seen_at')
-          .gt('price', 0)
-          .order('id', { ascending: true })
-          .range(from, from + size - 1);
-
-      let { data, error } = await select();
-
-      if (error && slugColumnPublished && String(error.message).includes('public_slug')) {
-        slugColumnPublished = false;
-        ({ data, error } = await select());
-      }
-
-      if (error) break;
-      const rows = (data ?? []) as unknown as Array<{
-        id: string;
-        public_slug?: string | null;
-        last_seen_at: string | null;
-      }>;
-      if (rows.length === 0) break;
-
-      for (const row of rows) {
-        results.push({
-          id: String(row.id),
-          slug: row.public_slug ?? null,
-          lastModified: row.last_seen_at ?? new Date().toISOString(),
-        });
-      }
-
-      // Menos filas que el lote significa fin del catálogo: no hay más páginas
-      // que pedir y seguir sólo gasta viajes.
-      if (rows.length < size) break;
-    }
-  } catch {
-    return results;
+    // Menos filas que el lote significa fin del catálogo: no hay más páginas
+    // que pedir y seguir sólo gasta viajes.
+    if (rows.length < size) break;
   }
 
   return results;
+}
+
+/**
+ * Recorre el catálogo entero en tandas de `SITEMAP_CHUNK_SIZE`, en el mismo
+ * orden que `getSitemapProducts`: la tanda N de acá es el archivo N de allá.
+ *
+ * Pagina por cursor (`id > último`) y no por `OFFSET`. Con `OFFSET`, la tanda
+ * 58 obliga a Postgres a leer y descartar 142 500 filas antes de devolver
+ * nada; con cursor cada viaje cuesta lo mismo, sea el primero o el último.
+ * Es lo que usa el script que deja los sitemaps hechos en Storage.
+ */
+export async function* iterateSitemapProductChunks(): AsyncGenerator<SitemapProduct[]> {
+  let chunk: SitemapProduct[] = [];
+  let lastId: string | null = null;
+
+  for (;;) {
+    const after = lastId;
+    const rows = await selectProducts((query) =>
+      (after === null ? query : query.gt('id', after)).limit(FETCH_PAGE),
+    );
+    if (rows.length === 0) break;
+
+    for (const row of rows) {
+      chunk.push(row);
+      if (chunk.length === SITEMAP_CHUNK_SIZE) {
+        yield chunk;
+        chunk = [];
+      }
+    }
+
+    lastId = rows[rows.length - 1].id;
+    if (rows.length < FETCH_PAGE) break;
+  }
+
+  if (chunk.length > 0) yield chunk;
+}
+
+type ProductQuery = ReturnType<typeof baseProductQuery>;
+
+function baseProductQuery() {
+  return getSupabaseAdmin()
+    .from(VIEW)
+    .select(slugColumnPublished ? 'id, public_slug, last_seen_at' : 'id, last_seen_at')
+    .gt('price', 0)
+    .order('id', { ascending: true });
+}
+
+/**
+ * Un viaje a la vista, con el orden y el filtro de siempre; `page` decide qué
+ * ventana se pide. Lanza si falla.
+ *
+ * El slug se pide sólo si la vista lo publica. Sin esta comprobación, un
+ * despliegue anterior a la migración 0021 haría fallar la consulta entera
+ * (error 42703) y todos los archivos de producto responderían error —que es
+ * exactamente lo que Search Console reporta como "no se ha podido obtener" y
+ * lo que hace que Google deje de rastrear el catálogo.
+ */
+async function selectProducts(page: (query: ProductQuery) => ProductQuery): Promise<SitemapProduct[]> {
+  let { data, error } = await page(baseProductQuery());
+
+  if (error && slugColumnPublished && String(error.message).includes('public_slug')) {
+    slugColumnPublished = false;
+    ({ data, error } = await page(baseProductQuery()));
+  }
+
+  if (error) throw new Error(`No se pudo leer el catálogo del sitemap: ${error.message}`);
+
+  const rows = (data ?? []) as unknown as Array<{
+    id: string;
+    public_slug?: string | null;
+    last_seen_at: string | null;
+  }>;
+
+  return rows.map((row) => ({
+    id: String(row.id),
+    slug: row.public_slug ?? null,
+    lastModified: row.last_seen_at ?? new Date().toISOString(),
+  }));
 }

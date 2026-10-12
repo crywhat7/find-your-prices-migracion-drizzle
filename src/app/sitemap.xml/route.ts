@@ -1,16 +1,6 @@
-import { absoluteUrl } from "@/lib/seo/metadata";
-import {
-  productSitemapPath,
-  SITEMAP_CATEGORIES_PATH,
-  SITEMAP_PAGES_PATH,
-  SITEMAP_STORES_PATH,
-} from "@/lib/seo/sitemaps";
-import {
-  renderSitemapIndex,
-  xmlResponse,
-  type SitemapIndexEntry,
-} from "@/lib/seo/sitemapXml";
+import { sitemapIndexXml } from "@/lib/seo/sitemapBuild";
 import { countSitemapProducts, sitemapChunkCount } from "@/server/services/sitemap";
+import { serveSitemap, SITEMAP_OBJECTS } from "@/server/services/sitemapStore";
 
 /**
  * Índice de sitemaps: `https://findyourprices.com/sitemap.xml`.
@@ -23,29 +13,15 @@ import { countSitemapProducts, sitemapChunkCount } from "@/server/services/sitem
  * porque esa convención sólo sabe emitir `<urlset>`, y lo que va en la raíz de
  * un catálogo de este tamaño es un `<sitemapindex>`.
  *
- * Se regenera cada hora. El catálogo crece de a poco; lo que cambia seguido
- * son los precios, y eso no altera qué URLs existen.
+ * Lo normal es servir el que dejó hecho `scripts/generate-sitemaps.ts` en
+ * Storage; armarlo al vuelo es sólo el respaldo (ver `sitemapStore.ts`).
+ * Dinámico a propósito: copiar el archivo guardado cuesta un `fetch`, y así
+ * nunca queda congelado un índice del momento del build.
  */
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 export async function GET(): Promise<Response> {
-  const total = await countSitemapProducts();
-  const chunks = sitemapChunkCount(total);
-
-  const entries: SitemapIndexEntry[] = [
-    { loc: absoluteUrl(SITEMAP_PAGES_PATH) },
-    { loc: absoluteUrl(SITEMAP_CATEGORIES_PATH) },
-    { loc: absoluteUrl(SITEMAP_STORES_PATH) },
-  ];
-
-  for (let chunk = 1; chunk <= chunks; chunk += 1) {
-    entries.push({ loc: absoluteUrl(productSitemapPath(chunk)) });
-  }
-
-  // Sin `lastmod` a propósito. La única fecha que podríamos poner acá es "hace
-  // un momento", porque el índice se genera al vuelo; un `lastmod` que siempre
-  // dice ahora no informa nada y enseña al rastreador a ignorar el campo. La
-  // fecha real de cada ficha sí va, y ahí sí significa algo, dentro de cada
-  // archivo de producto.
-  return xmlResponse(renderSitemapIndex(entries));
+  return serveSitemap(SITEMAP_OBJECTS.index, async () =>
+    sitemapIndexXml(sitemapChunkCount(await countSitemapProducts())),
+  );
 }

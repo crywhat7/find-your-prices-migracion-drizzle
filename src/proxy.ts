@@ -1,5 +1,5 @@
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
-import { logBotVisit, shouldLogBot } from "@/lib/analytics/botLog";
+import { inBotSample, logBotVisit, shouldLogBot } from "@/lib/analytics/botLog";
 
 /**
  * Proxy: anota las visitas de bots para /admin/trafico.
@@ -8,10 +8,11 @@ import { logBotVisit, shouldLogBot } from "@/lib/analytics/botLog";
  * bots casi nunca ejecutan JavaScript: si se los quiere ver, hay que verlos
  * acá, en el servidor, antes de que la página salga de caché. No cambia la
  * respuesta ni la demora: el registro corre en `waitUntil`, después de
- * responder. A una persona no le hace nada.
+ * responder. A una persona no le hace nada. Se anota una muestra, no cada
+ * visita (ver `botSampleRate`).
  */
 export function proxy(request: NextRequest, event: NextFetchEvent) {
-  if (shouldLogBot(request.method, request.nextUrl.pathname, request.headers)) {
+  if (shouldLogBot(request.method, request.nextUrl.pathname, request.headers) && inBotSample()) {
     event.waitUntil(logBotVisit(new URL(request.url), request.headers));
   }
   return NextResponse.next();

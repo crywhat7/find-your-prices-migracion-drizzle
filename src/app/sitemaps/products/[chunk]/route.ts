@@ -1,6 +1,6 @@
-import { absoluteUrl, HREFLANG } from "@/lib/seo/metadata";
-import { renderUrlSet, xmlResponse, type SitemapUrl } from "@/lib/seo/sitemapXml";
+import { productSitemapXml } from "@/lib/seo/sitemapBuild";
 import { countSitemapProducts, getSitemapProducts, sitemapChunkCount } from "@/server/services/sitemap";
+import { serveSitemap, SITEMAP_OBJECTS } from "@/server/services/sitemapStore";
 
 /**
  * Un archivo de sitemap por tanda de fichas: `/sitemaps/products/1.xml`.
@@ -10,9 +10,10 @@ import { countSitemapProducts, getSitemapProducts, sitemapChunkCount } from "@/s
  * más de 50 000 entradas lo rechaza Google entero, no de la 50 001 en adelante.
  *
  * El índice (`/sitemap.xml`) es el que decide cuántas tandas hay; acá sólo se
- * sirve la que piden.
+ * sirve la que piden. Normalmente sale de Storage (ver `sitemapStore.ts`); si
+ * el archivo no está, se arma al vuelo.
  */
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 interface RouteContext {
   params: Promise<{ chunk: string }>;
@@ -42,41 +43,9 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
   // respuesta correcta a una tanda que no existe.
   if (chunk === null) return new Response("Not found", { status: 404 });
 
-  const total = await countSitemapProducts();
-  if (chunk > sitemapChunkCount(total)) {
-    return new Response("Not found", { status: 404 });
-  }
-
-  const products = await getSitemapProducts(chunk);
-  if (products.length === 0) return new Response("Not found", { status: 404 });
-
-  const urls: SitemapUrl[] = products.map((product) => {
-    // Con slug se lista la dirección legible; sin él —catálogo anterior a la
-    // migración 0021— la vieja, que sigue siendo la buena hasta que exista la
-    // otra. Nunca las dos: listar una URL que redirige a otra que también está
-    // en el archivo le pide a Google que rastree el catálogo dos veces y no
-    // indexa ninguna de las dos versiones con claridad.
-    const es = product.slug ? `/p/${product.slug}` : `/producto/${product.id}`;
-    const en = product.slug ? `/en/p/${product.slug}` : `/en/product/${product.id}`;
-
-    return {
-      loc: absoluteUrl(es),
-      // La fecha del último chequeo del scraper. Es un `lastmod` que significa
-      // algo: si el precio se revisó ayer, Google sabe que vale la pena volver.
-      lastmod: product.lastModified,
-      changefreq: "daily" as const,
-      priority: 0.7,
-      alternates: [
-        { hreflang: HREFLANG.es, href: absoluteUrl(es) },
-        { hreflang: HREFLANG.en, href: absoluteUrl(en) },
-        { hreflang: "x-default", href: absoluteUrl(es) },
-      ],
-    };
+  return serveSitemap(SITEMAP_OBJECTS.product(chunk), async () => {
+    if (chunk > sitemapChunkCount(await countSitemapProducts())) return null;
+    const products = await getSitemapProducts(chunk);
+    return products.length === 0 ? null : productSitemapXml(products);
   });
-
-  // Sólo se lista la URL en español como `<loc>`; la inglesa entra como
-  // alternativa. Listar las dos duplicaría el archivo —100 000 entradas para
-  // 50 000 fichas— sin agregar una sola página que Google no vaya a descubrir
-  // igual por el `hreflang`.
-  return xmlResponse(renderUrlSet(urls));
 }

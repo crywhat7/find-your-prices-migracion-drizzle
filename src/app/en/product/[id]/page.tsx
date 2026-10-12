@@ -17,6 +17,11 @@ import { getProductSlug } from "@/server/services/catalog";
  */
 export const revalidate = 3600;
 
+/** Cada página se guarda (ISR) en su primera visita. Ver `app/(es)/p/[slug]/page.tsx`. */
+export async function generateStaticParams() {
+  return [];
+}
+
 interface PageProps {
   params: Promise<{ id: string }>;
 }

@@ -10,7 +10,18 @@ import { formatInt } from "./format";
  * ella. Al lado, cuántas vistas de bots hay en el rango, para saber de
  * cuánto se habla antes de marcarlo.
  */
-export function BotToggle({ checked, toggleHref, botViews }: { checked: boolean; toggleHref: string; botViews: number }) {
+export function BotToggle({
+  checked,
+  toggleHref,
+  botViews,
+  sampleRate,
+}: {
+  checked: boolean;
+  toggleHref: string;
+  botViews: number;
+  /** Fracción de visitas de bots que se anotan (ver `botSampleRate`). */
+  sampleRate: number;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -26,7 +37,8 @@ export function BotToggle({ checked, toggleHref, botViews }: { checked: boolean;
       <span>
         Incluir bots y rastreadores
         <span className="ml-1.5 tabular-nums text-[var(--text-tertiary)]">
-          ({formatInt(botViews)} {botViews === 1 ? "vista" : "vistas"} en el rango)
+          ({formatInt(botViews)} {botViews === 1 ? "vista" : "vistas"} en el rango
+          {sampleRate < 1 && sampleRate > 0 ? `, muestra de 1 cada ${Math.round(1 / sampleRate)}` : ""})
         </span>
       </span>
       {pending && <span className="text-[var(--text-tertiary)]">…</span>}

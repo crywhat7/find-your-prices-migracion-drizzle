@@ -41,6 +41,32 @@ export function shouldLogBot(method: string, path: string, headers: Headers): bo
   return isBot(headers.get("user-agent") ?? "");
 }
 
+/**
+ * Fracción de las visitas de bots que se anotan: 1 de cada 10 por defecto.
+ *
+ * Anotarlas todas era una escritura a Supabase por cada página que pide
+ * Googlebot, y Googlebot pide decenas de miles por día: justo cuando el sitio
+ * más necesita responder rápido al rastreador, la base se llenaba de
+ * inserciones que compiten con las consultas de las fichas. Una muestra
+ * alcanza para lo que se quiere ver —qué bots entran, a qué y en qué
+ * proporción—. El panel avisa que esas cifras son una muestra.
+ *
+ * Se ajusta con `BOT_LOG_SAMPLE_RATE` (entre 0 y 1; 0 apaga el registro, 1
+ * anota todo).
+ */
+export const DEFAULT_BOT_SAMPLE_RATE = 0.1;
+
+export function botSampleRate(): number {
+  const raw = process.env.BOT_LOG_SAMPLE_RATE?.trim();
+  const value = raw ? Number(raw) : Number.NaN;
+  return Number.isFinite(value) && value >= 0 && value <= 1 ? value : DEFAULT_BOT_SAMPLE_RATE;
+}
+
+/** True si esta visita entra en la muestra. `random` sólo existe para las pruebas. */
+export function inBotSample(random: number = Math.random()): boolean {
+  return random < botSampleRate();
+}
+
 /** Anota la visita de un bot. Nunca lanza: un registro perdido no importa. */
 export async function logBotVisit(url: URL, headers: Headers): Promise<void> {
   if (!enabled()) return;

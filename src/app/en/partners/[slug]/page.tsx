@@ -6,6 +6,11 @@ import { PartnerRoute, partnerPageMetadata } from "@/features/affiliates/affilia
  */
 export const revalidate = 900;
 
+/** Cada página se guarda (ISR) en su primera visita. Ver `app/(es)/p/[slug]/page.tsx`. */
+export async function generateStaticParams() {
+  return [];
+}
+
 interface PageProps {
   params: Promise<{ slug: string }>;
 }

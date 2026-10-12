@@ -40,6 +40,20 @@ import {
  */
 export const revalidate = 3600;
 
+/**
+ * Lista vacía a propósito: no se arma ninguna ficha en el build, pero cada una
+ * queda guardada (ISR) la primera vez que alguien la pide y se sirve de caché
+ * hasta que pase `revalidate`.
+ *
+ * Sin esta función, Next trata la ruta dinámica como renderizado por petición
+ * y `revalidate` no tiene efecto: cada visita de Googlebot armaba la página
+ * entera y consultaba la base. En el Worker de Cloudflare eso agotaba la CPU y
+ * una de cada seis fichas respondía 503 (error 1102).
+ */
+export async function generateStaticParams() {
+  return [];
+}
+
 interface PageProps {
   params: Promise<{ slug: string }>;
 }

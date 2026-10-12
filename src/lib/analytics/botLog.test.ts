@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { logBotVisit, shouldLogBot } from "./botLog";
+import { inBotSample, logBotVisit, shouldLogBot } from "./botLog";
 
 const GOOGLEBOT = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
 const PERSON = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36";
@@ -16,6 +16,25 @@ describe("shouldLogBot", () => {
     expect(shouldLogBot("POST", "/tiendas", new Headers({ "user-agent": GOOGLEBOT }))).toBe(false);
     expect(shouldLogBot("GET", "/admin", new Headers({ "user-agent": GOOGLEBOT }))).toBe(false);
     expect(shouldLogBot("GET", "/tiendas", new Headers({ "user-agent": GOOGLEBOT, rsc: "1" }))).toBe(false);
+  });
+});
+
+describe("inBotSample", () => {
+  it("anota 1 de cada 10 por defecto", () => {
+    vi.stubEnv("BOT_LOG_SAMPLE_RATE", "");
+    expect(inBotSample(0.05)).toBe(true);
+    expect(inBotSample(0.1)).toBe(false);
+    expect(inBotSample(0.5)).toBe(false);
+  });
+
+  it("respeta BOT_LOG_SAMPLE_RATE y descarta valores inválidos", () => {
+    vi.stubEnv("BOT_LOG_SAMPLE_RATE", "1");
+    expect(inBotSample(0.99)).toBe(true);
+    vi.stubEnv("BOT_LOG_SAMPLE_RATE", "0");
+    expect(inBotSample(0)).toBe(false);
+    vi.stubEnv("BOT_LOG_SAMPLE_RATE", "7");
+    expect(inBotSample(0.05)).toBe(true);
+    expect(inBotSample(0.2)).toBe(false);
   });
 });
 

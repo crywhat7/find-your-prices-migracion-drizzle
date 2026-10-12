@@ -16,6 +16,7 @@ import { deriveKpis, loadTraffic } from '@/features/admin-analytics/loadTraffic'
 import { TimeSeriesChart } from '@/features/admin-analytics/TimeSeriesChart';
 import { BarList, Card, RangeControls, StatTile } from '@/features/admin-analytics/Widgets';
 import { BotToggle } from '@/features/admin-analytics/BotToggle';
+import { botSampleRate } from '@/lib/analytics/botLog';
 import { NO_INDEX_ROBOTS } from '@/lib/seo/metadata';
 import { hasAdminSession } from '@/server/admin/session';
 
@@ -40,6 +41,7 @@ export default async function TrafficPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const { range, report, previous, live, error } = await loadTraffic(params, 15);
   const includeBots = params.bots === '1';
+  const sampleRate = botSampleRate();
   const baseQuery = { range: range.key, from: range.fromDate, to: range.toDate };
   const query = new URLSearchParams({ ...baseQuery, ...(includeBots ? { bots: '1' } : {}) }).toString();
   // El reporte para aliados va siempre sin bots: son cifras de personas.
@@ -89,7 +91,12 @@ export default async function TrafficPage({ searchParams }: PageProps) {
           </div>
           <div className="mt-8 space-y-4">
             <RangeControls range={range} basePath="/admin/trafico" extra={includeBots ? { bots: '1' } : {}} />
-            <BotToggle checked={includeBots} toggleHref={toggleHref} botViews={report?.botViews ?? 0} />
+            <BotToggle
+              checked={includeBots}
+              toggleHref={toggleHref}
+              botViews={report?.botViews ?? 0}
+              sampleRate={sampleRate}
+            />
           </div>
         </div>
       </header>
@@ -101,7 +108,7 @@ export default async function TrafficPage({ searchParams }: PageProps) {
               {error ?? 'No se pudo leer el tráfico.'}
             </p>
           ) : (
-            <Dashboard report={report} previous={previous} range={range} includeBots={includeBots} />
+            <Dashboard report={report} previous={previous} range={range} includeBots={includeBots} sampleRate={sampleRate} />
           )}
         </div>
       </main>
@@ -114,11 +121,13 @@ function Dashboard({
   previous,
   range,
   includeBots,
+  sampleRate,
 }: {
   report: NonNullable<Awaited<ReturnType<typeof loadTraffic>>['report']>;
   previous: Awaited<ReturnType<typeof loadTraffic>>['previous'];
   range: Awaited<ReturnType<typeof loadTraffic>>['range'];
   includeBots: boolean;
+  sampleRate: number;
 }) {
   const kpi = deriveKpis(report, previous, range.days);
   const total = report.totals.views;
@@ -182,7 +191,7 @@ function Dashboard({
       {includeBots && (
         <Card
           title="Bots y rastreadores"
-          hint="Vistas registradas en el servidor de buscadores, vistas previas de enlaces (WhatsApp, Facebook), IA y scripts. Ahora están sumadas en todas las cifras de arriba."
+          hint={`Vistas registradas en el servidor de buscadores, vistas previas de enlaces (WhatsApp, Facebook), IA y scripts. Ahora están sumadas en todas las cifras de arriba.${sampleRate > 0 && sampleRate < 1 ? ` Es una muestra: se anota 1 de cada ${Math.round(1 / sampleRate)} visitas de bots.` : ''}`}
         >
           <BarList rows={report.bots} total={report.botViews} empty="Ningún bot en el período." />
         </Card>
