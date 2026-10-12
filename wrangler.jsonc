@@ -1,0 +1,48 @@
+/**
+ * Worker de producción (Cloudflare Workers + OpenNext).
+ *
+ * `name` tiene que ser EXACTAMENTE el nombre del Worker que ya existe en el
+ * panel (Workers & Pages); si no coincide, Workers Builds despliega uno nuevo
+ * o falla. Lo mismo para `service` en `services`, que apunta al propio Worker.
+ *
+ * El bucket de R2 y la base D1 se crean una vez a mano antes del primer
+ * despliegue con esta configuración: docs/cloudflare-cache-r2.md.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "find-your-prices",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-09-25",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "services": [
+    {
+      // El propio Worker: la cola de revalidación se pide a sí mismo las
+      // páginas vencidas por acá.
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "find-your-prices"
+    }
+  ],
+  "r2_buckets": [
+    {
+      // Caché ISR: cada página armada se guarda acá.
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "find-your-prices-cache"
+    }
+  ],
+  "d1_databases": [
+    {
+      // Cuándo se invalidó cada ruta o etiqueta (`revalidatePath` / `revalidateTag`).
+      "binding": "NEXT_TAG_CACHE_D1",
+      "database_name": "find-your-prices-tags",
+      // Panel de Cloudflare → D1 → find-your-prices-tags. Ver docs/cloudflare-cache-r2.md.
+      "database_id": "REEMPLAZAR-CON-EL-ID-DE-D1"
+    }
+  ]
+}

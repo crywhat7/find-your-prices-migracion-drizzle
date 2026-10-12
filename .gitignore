@@ -62,3 +62,7 @@ next-env.d.ts
 /scrape-logs/
 # Descargas crudas de cada estrategia, para repetir la ingesta sin scrapear
 /scrape-data/
+
+# Cloudflare / OpenNext (salida del build y estado local de wrangler)
+/.open-next/
+/.wrangler/
