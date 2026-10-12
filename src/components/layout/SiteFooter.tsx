@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { SHELL } from "@/components/layout/shell";
 import { siteConfig } from "@/config/site";
+import { BUILD_INFO, formatBuildTime } from "@/lib/buildInfo";
 import { useLocale } from "@/features/i18n/LocaleContext";
 import { routeFor, type SitePage } from "@/features/i18n/routes";
 import type { Locale } from "@/features/i18n/translate";
@@ -64,6 +65,14 @@ export function SiteFooter() {
           </p>
           <p className="mt-2 text-[0.8125rem] tabular-nums text-[var(--text-tertiary)] opacity-70">
             © {new Date().getFullYear()}
+          </p>
+          {/* La versión, chica: sirve para saber qué build está viendo
+              alguien cuando reporta algo. */}
+          <p
+            className="font-mono text-[0.6875rem] text-[var(--text-tertiary)] opacity-60"
+            title={`Build ${BUILD_INFO.buildId} · ${formatBuildTime(BUILD_INFO.builtAt, locale)}`}
+          >
+            v{BUILD_INFO.version} · {BUILD_INFO.commit}
           </p>
         </div>
 

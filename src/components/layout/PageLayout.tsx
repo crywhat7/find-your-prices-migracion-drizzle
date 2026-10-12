@@ -7,6 +7,7 @@ import { LocaleProvider } from "@/features/i18n/LocaleContext";
 import { ProductClickTracker } from "@/features/products/ProductClickTracker";
 import { PageViewTracker } from "@/features/analytics/PageViewTracker";
 import { ClientErrorListener } from "@/features/errors/ClientErrorListener";
+import { VersionWatcher } from "@/features/version/VersionWatcher";
 import type { Locale } from "@/features/i18n/translate";
 import { ThemeProvider } from "@/features/theme/ThemeProvider";
 
@@ -54,6 +55,8 @@ export function PageLayout({ locale, localePaths, children }: PageLayoutProps) {
           <PageViewTracker />
           {/* Y los errores del navegador van a /admin/errores. */}
           <ClientErrorListener />
+          {/* Avisa si esta pestaña quedó con una versión vieja del sitio. */}
+          <VersionWatcher locale={locale} />
           {/* Easter egg: Ctrl/Cmd + 0 + 0 + 0. */}
           <CrumbleEasterEgg />
         </div>

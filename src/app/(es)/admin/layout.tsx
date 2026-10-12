@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { hasAdminSession } from '@/server/admin/session';
 import { AdminGate } from '@/features/admin-gate/AdminGate';
+import { ClientErrorListener } from '@/features/errors/ClientErrorListener';
+import { VersionWatcher } from '@/features/version/VersionWatcher';
 
 /**
  * Puerta de todo /admin (scraping y categorías).
@@ -13,5 +15,12 @@ import { AdminGate } from '@/features/admin-gate/AdminGate';
  */
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   if (!(await hasAdminSession())) return <AdminGate />;
-  return <>{children}</>;
+  // El panel no usa PageLayout: el escucha de errores del navegador va acá.
+  return (
+    <>
+      {children}
+      <ClientErrorListener />
+      <VersionWatcher />
+    </>
+  );
 }

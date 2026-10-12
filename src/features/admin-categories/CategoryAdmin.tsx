@@ -25,6 +25,8 @@ interface Props {
   storeCategories: StoreCategoryRow[];
   stores: StoreOption[];
   usage: Record<string, CanonicalUsage>;
+  /** Vuelve a pedir los datos después de un cambio (ver `CategoryAdminLoader`). */
+  onChanged?: () => void;
 }
 
 type MappingFilter = 'unmapped' | 'mapped' | 'all';
@@ -55,7 +57,7 @@ function buildTree(categories: CanonicalCategory[]): TreeNode[] {
   return roots;
 }
 
-export function CategoryAdmin({ categories, storeCategories, stores, usage }: Props) {
+export function CategoryAdmin({ categories, storeCategories, stores, usage, onChanged }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
 
@@ -153,7 +155,8 @@ export function CategoryAdmin({ categories, storeCategories, stores, usage }: Pr
     action()
       .then((text) => {
         setMessage({ tone: 'ok', text });
-        startTransition(() => router.refresh());
+        if (onChanged) onChanged();
+        else startTransition(() => router.refresh());
       })
       .catch((error: unknown) => {
         setMessage({ tone: 'error', text: error instanceof Error ? error.message : String(error) });

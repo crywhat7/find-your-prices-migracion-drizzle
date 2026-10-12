@@ -307,6 +307,21 @@ tema activo y la densidad de la pantalla. Si cambia un original, se vuelve a
 correr el script y se commitean las salidas; en producción no se procesa
 ninguna imagen.
 
+### Versión del build
+
+Cada build graba su versión (`package.json`), el commit y la hora de
+compilación (`next.config.ts` → `src/lib/buildInfo.ts`). Con eso:
+
+- `GET /api/version` dice qué build corre en el servidor. Si el commit es el
+  último que subiste, el despliegue ya terminó.
+- El inicio de `/admin` compara el build del servidor con el del navegador.
+- Si una pestaña quedó con una versión vieja (despliegue nuevo o caché del
+  navegador), aparece un aviso para recargar (`VersionWatcher`).
+- El pie del sitio muestra `v0.1.0 · <commit>`.
+
+Para marcar una versión, subí `version` en `package.json`; el commit y la hora
+cambian solos en cada build.
+
 ### Configuración por entorno
 
 | Variable | Para qué |

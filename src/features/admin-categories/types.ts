@@ -19,17 +19,20 @@ export interface CanonicalCategory {
  * mapearla: de qué tienda es, dónde cuelga en el árbol de la tienda, cuántos
  * artículos comprables tiene hoy y a qué nodo canónico apunta.
  */
+/**
+ * Una categoría de tienda tal como llega al panel. Solo lo que el panel
+ * usa: son ~5 000 filas y cada campo de más se multiplica por eso (con `url`,
+ * `parent_id` y `level` la página pesaba 2 MB y el worker de Cloudflare se
+ * cortaba a la mitad, ver `loadCategoryAdminData`).
+ */
 export interface StoreCategoryRow {
   id: string;
   store_id: string;
   store_name: string;
   external_id: string;
-  parent_id: string | null;
   name: string;
   /** Ruta dentro del árbol de la tienda: "Hogar › Cocina › Ollas". */
   store_path: string;
-  level: number;
-  url: string | null;
   is_active: boolean;
   /** Conteo que reporta la tienda; puede ser null o estar viejo. */
   reported_count: number | null;

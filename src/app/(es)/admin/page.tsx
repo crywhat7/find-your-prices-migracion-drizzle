@@ -5,6 +5,7 @@ import { CACHE_SCOPES, isCacheScope } from '@/server/services/cacheRefresh';
 import { lockAdmin, refreshCacheAction } from './actions';
 import { countNewApplications } from '@/server/services/affiliates';
 import { countOpenErrorGroups } from '@/server/errors/errorLog';
+import { VersionPanel } from '@/features/version/VersionPanel';
 import { hasAdminSession } from '@/server/admin/session';
 
 /**
@@ -131,6 +132,23 @@ export default async function AdminHubPage({ searchParams }: PageProps) {
 
       <main className="px-6 py-12 sm:px-10 lg:px-16">
         <div className="mx-auto w-full max-w-6xl space-y-16">
+          <section aria-labelledby="version-heading">
+            <h2 id="version-heading" className="text-[1.25rem] font-semibold tracking-[-0.02em] text-[var(--text)]">
+              Versión
+            </h2>
+            <p className="mt-1 max-w-[70ch] text-[0.8125rem] leading-[1.55] text-[var(--text-tertiary)]">
+              Qué build está desplegado y con cuál se cargó este navegador. Si el commit del servidor es el último que
+              subiste, el despliegue ya terminó; si no coincide con el del navegador, recargá. También en{' '}
+              <a href="/api/version" target="_blank" className="font-mono text-[var(--accent)] hover:underline">
+                /api/version
+              </a>
+              .
+            </p>
+            <div className="mt-6">
+              <VersionPanel />
+            </div>
+          </section>
+
           <section aria-labelledby="tools-heading">
             <h2 id="tools-heading" className="text-[1.25rem] font-semibold tracking-[-0.02em] text-[var(--text)]">
               Herramientas
