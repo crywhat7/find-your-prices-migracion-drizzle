@@ -57,15 +57,41 @@ producto hace.
   `en-HN`): "L 1,299.00", no "1.299,00 HNL".
 - **Idiomas:** español en la raíz del sitio, inglés bajo `/en`. El español es el
   idioma nativo del producto, con voseo hondureño; el inglés es traducción.
-- **Tiendas cubiertas hoy (5):** Diunsa, Jetstereo, RadioShack HN, ACOSA y Lady
-  Lee. Cada una tiene su propia estrategia de scraping.
-- **Escala actual:** alrededor de 30 000 artículos activos (septiembre 2026).
-- **Cómo entra la información:** un proceso automático (cron) recorre las
-  páginas públicas de cada tienda varias veces al día. El catálogo cambia cuando
-  corre el scraper, no cuando alguien visita; las páginas se sirven de caché con
-  revalidación (300 s el listado, 600 s la ficha).
-- **Panel interno:** `/admin/scraping` administra tiendas, objetivos y corridas.
-  Es herramienta de operación, no parte del producto que ve el visitante.
+- **Tiendas cubiertas hoy (23, todas activas, octubre 2026):**
+  - Supermercados y por mayor: Walmart Honduras, Paiz, PriceSmart Honduras,
+    Comisariato Los Andes.
+  - Tiendas por departamento y hogar: Diunsa, Larach y Cía, Lady Lee, ACOSA.
+  - Electrónica y tecnología: Jetstereo, RadioShack Honduras, Steren, PC Builds
+    Honduras, Game Station, Okashi HN.
+  - Farmacia y cuidado personal: Farmacias Kielsa, Farmacia Siman, Prive
+    Perfumes.
+  - Librería y oficina: Metromedia, Office Depot, Paper Depot, Útiles de
+    Honduras, Meyko.
+  - Ropa: Zara.
+
+  Cada una tiene su propia estrategia de scraping (`src/server/scraping/
+  strategies/`). La lista viva está en la tabla `stores`.
+- **Escala actual:** unos 128 600 artículos comprables (precio > 0 y con
+  existencia) al 12 de octubre de 2026. Los que más aportan: Larach (~19 000),
+  Walmart (~15 400), Metromedia (~12 800) y Zara (~11 800). El árbol propio
+  tiene 208 categorías en 25 raíces.
+- **Cómo entra la información:** un cron de GitHub Actions dispara cada hora y
+  corre lo que vence según una agenda semanal fija (migración 0046, calendario
+  en `src/db/docs/scrape-schedule.md`). Walmart, Paiz, PriceSmart, Comisariato
+  Los Andes, Kielsa y Farmacia Siman se recorren dos veces por semana; el
+  resto, una. Los catálogos grandes también se pueden correr a mano desde una
+  computadora (`npm run scrape:local`). El catálogo cambia cuando corre el
+  scraper, no cuando alguien visita.
+- **Caché:** portada 5 min; categorías, tiendas y fichas 1 h; aliados 15 min.
+  Guardar desde el panel regenera lo que toca, y `/admin` tiene botones para
+  tirar el caché a mano.
+- **Dónde corre:** Cloudflare Workers (plan Free) sobre Supabase. La ubicación
+  de las visitas sale de las cabeceras de Cloudflare.
+- **Panel interno (`/admin`):** tráfico, scraping, árbol y mapeo de categorías,
+  contenido de categorías, tiendas y aliados. Es herramienta de operación, no
+  parte del producto que ve el visitante. Se entra con `CRON_SECRET`, que deja
+  una cookie de sesión; cada página la vuelve a comprobar (la del layout sola
+  no protege los datos).
 - **Sostenimiento:** patrocinios y un programa de afiliados (octubre 2026; el
   primer interesado es Eneba). Los anuncios se quitaron. Los aliados viven en
   su propia sección (`/aliados`, `/en/partners`), con su código promocional y
@@ -91,8 +117,17 @@ producto hace.
 - Páginas de contexto y políticas: acerca de, términos, privacidad y uso de
   contenido, en los dos idiomas.
 - Sección de aliados: índice y página por aliado, con código promocional
-  copiable, ofertas destacadas en la moneda del aliado y declaración de
-  afiliado visible arriba.
+  copiable y ofertas destacadas en la moneda del aliado. Cómo funcionan los
+  enlaces de afiliado se explica en los términos de uso (sección 3,
+  "Transparencia"), no con un aviso en la página: así lo decidió el equipo,
+  como hacen los sitios de afiliados.
+- Solicitud de afiliación: en `/aliados` una tienda deja sus datos (o escribe
+  al correo de contacto) y la solicitud cae en la bandeja de `/admin/aliados`,
+  con aviso en el inicio del panel mientras haya nuevas. Es el único
+  formulario del sitio que pide datos de contacto (migración 0049).
+- Logo propio: isotipo en la barra, logo completo en el pie, favicon, íconos
+  de instalación y tarjeta para compartir. Se generan desde `public/icons/`
+  con `scripts/generate-brand-assets.mjs`.
 
 **Restricciones técnicas confirmadas**
 
@@ -123,11 +158,14 @@ producto hace.
   política de privacidad publicada que dice que no pedimos correo. Antes de
   construirlas hay que decidir el mecanismo (¿correo sin cuenta? ¿notificación
   del navegador?) y actualizar la política de privacidad en consecuencia.
-- **El panel de admin** puede quedar abierto si `ADMIN_API_SECRET` no está
-  definida; se acordó así para la primera etapa y sigue pendiente de resolver.
-- **El correo de contacto publicado** (`hola@findyourprices.com`, en
-  `src/config/site.ts`) es un marcador de posición. El procedimiento de retiro
-  de contenido depende de que apunte a un buzón real.
+- **La API del panel de scraping** (`/api/scraping/*`) queda abierta si
+  `ADMIN_API_SECRET` no está definida; se acordó así para la primera etapa y
+  sigue pendiente de resolver. Las páginas de `/admin` sí piden sesión.
+- **El correo de contacto publicado** (`support@findyourprices.com`, en
+  `src/config/site.ts`) tiene que ser un buzón que alguien lea: de él dependen
+  el retiro de contenido y ahora también las tiendas que quieren afiliarse.
+- **La lista de tiendas para SEO** (`siteConfig.stores` y la descripción del
+  sitio) todavía nombra 7 tiendas, no las 23.
 - **El dominio no está fijado:** la configuración dice `findyourprices.com` y el
   agente del scraper dice `findyourprices.hn`.
 
@@ -141,7 +179,7 @@ producto hace.
 - **Autoría:** lo hicieron dos personas, acreditadas por su apodo de GitHub
   dentro del texto de "Acerca de": **crywhat7** (github.com/crywhat7) y
   **fq962** (github.com/fq962). Sin empresa y sin inversionistas. Las únicas
-  comisiones son las de los aliados, declaradas en su sección.
+  comisiones son las de los aliados, explicadas en los términos de uso.
 - **Compromiso público con las tiendas:** la política de uso de contenido
   publicada promete retiro a pedido en 5 días hábiles, sin exigir reclamo legal.
   Está en vigor porque está publicada. (No fue marcada como innegociable en la
@@ -149,8 +187,10 @@ producto hace.
 
 ## Evidence on Hand
 
-- **Datos reales:** catálogo vivo de 5 tiendas hondureñas (~30 000 artículos),
-  con historial de precios en `price_history`.
+- **Datos reales:** catálogo vivo de 23 tiendas hondureñas (~128 600 artículos
+  comprables), con historial de precios en `price_history`.
+- **Tráfico:** medición propia desde el 12 de octubre de 2026 en
+  `/admin/trafico` (migración 0048). Cualquier cifra de visitas sale de ahí.
 - **Documentación propia:** `src/db/docs/documentation.md` (esquema) y
   `src/server/scraping/README.md` (cómo se suma una tienda).
 - **Textos publicados y confirmados:** `src/features/about/aboutContent.ts` y
@@ -158,10 +198,10 @@ producto hace.
 
 **Lo que NO existe, y no debe fabricarse:**
 
-- No hay testimonios, reseñas de usuarios, casos de éxito, menciones de prensa
-  ni cifras de tráfico o de usuarios.
-- No hay logotipo más allá del glifo de etiqueta dibujado en la navegación, ni
-  fotografías de los creadores.
+- No hay testimonios, reseñas de usuarios, casos de éxito ni menciones de
+  prensa. Las cifras de tráfico existen solo como lo que mide `/admin/trafico`:
+  no se redondean hacia arriba ni se inventan.
+- No hay fotografías de los creadores.
 - No hay cifras de ahorro ("ahorrá hasta un X%") ni comparativas de competencia.
 - Los textos legales no han sido revisados por un abogado.
 
@@ -172,9 +212,9 @@ producto hace.
    una pantalla, se suma la tienda.
 2. **El comparador señala, no vende.** Nunca carrito, nunca pagos. El recorrido
    termina en la tienda, y eso es un éxito, no una fuga. Las comisiones de
-   afiliado viven aparte, en Aliados, siempre declaradas: nunca entran a los
-   resultados del comparador ni cambian su orden, y una tienda no puede pagar
-   por aparecer ni por subir.
+   afiliado viven aparte, en Aliados, y están explicadas en los términos de
+   uso: nunca entran a los resultados del comparador ni cambian su orden, y
+   una tienda no puede pagar por aparecer ni por subir.
 3. **Sin fricción y sin peaje.** Gratis, sin cuenta, sin registro para comparar.
    Cualquier función nueva que pida datos tiene que justificar por qué no puede
    funcionar sin ellos.

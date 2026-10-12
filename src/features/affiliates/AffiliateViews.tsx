@@ -10,6 +10,7 @@ import type { Locale } from "@/features/i18n/translate";
 import type { AffiliatePartner } from "@/server/services/affiliates";
 import { AFFILIATE_COPY } from "./affiliateCopy";
 import { AFFILIATE_LINK_REL, localized, partnerOutboundPath, partnerPaths } from "./affiliateRules";
+import { AffiliateApplyForm } from "./AffiliateApplyForm";
 import { ExternalGlyph, OfferCard } from "./OfferCard";
 import { PromoCode } from "./PromoCode";
 
@@ -48,7 +49,15 @@ export function AffiliateIndexView({ locale, partners }: { locale: Locale; partn
 
         <Hero eyebrow={copy.indexEyebrow} title={copy.indexTitle} native={copy.indexNative} tagline={copy.indexTagline} />
 
-        <Disclosure title={copy.disclosureTitle} body={copy.disclosure} />
+        <a
+          href="#afiliate"
+          className="enter inline-flex items-center gap-2 rounded-full border border-[var(--border-strong)] px-4 py-2 text-[0.875rem] font-medium text-[var(--text)] outline-none transition-colors duration-[var(--dur-fast)] hover:bg-[var(--bg-subtle)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        >
+          {copy.apply.cta}
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+            <path d="M12 5v14M6 13l6 6 6-6" />
+          </svg>
+        </a>
 
         {partners.length === 0 ? (
           <section className="py-16 sm:py-20">
@@ -92,6 +101,15 @@ export function AffiliateIndexView({ locale, partners }: { locale: Locale; partn
             )}
           </>
         )}
+
+        {/* La puerta para que una tienda pida ser aliada. Va al final: quien
+            vino a buscar un código no tiene que pasar por encima de ella. */}
+        <section id="afiliate" aria-labelledby="apply-heading" className="scroll-mt-20 pt-4 pb-20 sm:pb-28">
+          <SectionHeading id="apply-heading" title={copy.apply.heading} sub={copy.apply.sub} />
+          <div className="mt-6 max-w-3xl">
+            <AffiliateApplyForm locale={locale} />
+          </div>
+        </section>
       </div>
     </PageLayout>
   );
@@ -226,8 +244,6 @@ export function AffiliatePartnerView({ locale, partner }: { locale: Locale; part
           </aside>
         </header>
 
-        <Disclosure title={copy.disclosureTitle} body={copy.disclosure} />
-
         <section aria-labelledby="partner-offers-heading" className="pt-14 pb-20 sm:pt-16 sm:pb-28">
           <SectionHeading
             id="partner-offers-heading"
@@ -297,35 +313,6 @@ function Hero({ eyebrow, title, native, tagline }: { eyebrow: string; title: str
         {tagline}
       </p>
     </header>
-  );
-}
-
-/** La declaración de afiliado: visible, arriba, en lenguaje llano. */
-function Disclosure({ title, body }: { title: string; body: string }) {
-  return (
-    <aside
-      aria-label={title}
-      className="enter flex gap-3 rounded-2xl bg-[var(--bg-subtle)] px-4 py-3.5 text-[0.8125rem] leading-[1.55] text-[var(--text-secondary)] sm:px-5"
-    >
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-tertiary)]"
-      >
-        <circle cx="12" cy="12" r="9" />
-        <path d="M12 11v5" />
-        <circle cx="12" cy="7.75" r="0.6" fill="currentColor" />
-      </svg>
-      <p>
-        <strong className="font-medium text-[var(--text)]">{title}. </strong>
-        {body}
-      </p>
-    </aside>
   );
 }
 

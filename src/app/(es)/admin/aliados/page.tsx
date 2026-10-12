@@ -4,13 +4,20 @@ import { ImagePlate } from '@/components/shared/ImagePlate';
 import { isWithinWindow, partnerPaths } from '@/features/affiliates/affiliateRules';
 import { buttonClass, PartnerFields, SectionTitle } from '@/features/admin-affiliates/AffiliateFields';
 import { NO_INDEX_ROBOTS } from '@/lib/seo/metadata';
-import { listPartnersForAdmin, type AffiliatePartner } from '@/server/services/affiliates';
-import { createPartnerAction } from './actions';
+import { ApplicationsInbox } from '@/features/admin-affiliates/ApplicationsInbox';
+import {
+  listApplications,
+  listPartnersForAdmin,
+  type AffiliateApplication,
+  type AffiliatePartner,
+} from '@/server/services/affiliates';
+import { createPartnerAction, updateApplicationAction } from './actions';
 import { hasAdminSession } from '@/server/admin/session';
 
 /**
- * Lista de aliados del programa de afiliados, con sus clics, y el
- * formulario para dar uno de alta. Detrás de la puerta de /admin.
+ * Programa de afiliados: la bandeja de solicitudes que llegan desde el
+ * formulario de /aliados, la lista de aliados con sus clics y el formulario
+ * para dar uno de alta. Detrás de la puerta de /admin.
  */
 export const metadata: Metadata = { title: 'Aliados', robots: NO_INDEX_ROBOTS };
 export const dynamic = 'force-dynamic';
@@ -31,6 +38,14 @@ export default async function AffiliateAdminPage({ searchParams }: PageProps) {
     rows = await listPartnersForAdmin();
   } catch (error) {
     loadError = error instanceof Error ? error.message : String(error);
+  }
+
+  let applications: AffiliateApplication[] = [];
+  let applicationsError: string | null = null;
+  try {
+    applications = await listApplications();
+  } catch (error) {
+    applicationsError = error instanceof Error ? error.message : String(error);
   }
 
   const live = rows.filter((row) => row.isActive && isWithinWindow(row.startsAt, row.endsAt)).length;
@@ -62,6 +77,11 @@ export default async function AffiliateAdminPage({ searchParams }: PageProps) {
             <Stat label="Clics totales" value={clicks} />
           </dl>
 
+          {status === 'saved' && (
+            <p role="status" className="mt-6 rounded-2xl bg-[var(--price-win-soft)] px-4 py-3 text-[0.875rem] text-[var(--price-win)]">
+              Guardado.
+            </p>
+          )}
           {status === 'deleted' && (
             <p role="status" className="mt-6 rounded-2xl bg-[var(--price-win-soft)] px-4 py-3 text-[0.875rem] text-[var(--price-win)]">
               Aliado borrado, con sus productos.
@@ -77,6 +97,8 @@ export default async function AffiliateAdminPage({ searchParams }: PageProps) {
 
       <main className="px-6 py-12 sm:px-10 lg:px-16">
         <div className="mx-auto w-full max-w-6xl space-y-16">
+          <ApplicationsInbox applications={applications} error={applicationsError} action={updateApplicationAction} />
+
           <section className="space-y-6">
             <SectionTitle title="Aliados" />
             {rows.length === 0 ? (

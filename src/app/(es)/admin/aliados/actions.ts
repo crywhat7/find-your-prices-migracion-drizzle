@@ -8,8 +8,10 @@ import {
   deletePartner,
   removePartnerLogo,
   saveOffer,
+  updateApplication,
   updatePartner,
   uploadPartnerLogo,
+  type ApplicationStatus,
   type OfferInput,
   type PartnerInput,
 } from '@/server/services/affiliates';
@@ -161,4 +163,14 @@ export async function deleteOfferAction(formData: FormData): Promise<void> {
     redirect(statusPath(`/admin/aliados/${partnerId}`, 'error', errorMessage(error)));
   }
   redirect(statusPath(`/admin/aliados/${partnerId}`, 'saved'));
+}
+
+export async function updateApplicationAction(formData: FormData): Promise<void> {
+  await assertAdmin();
+  try {
+    await updateApplication(text(formData, 'id'), text(formData, 'status') as ApplicationStatus, text(formData, 'notes'));
+  } catch (error) {
+    redirect(statusPath('/admin/aliados', 'error', errorMessage(error)));
+  }
+  redirect(`${statusPath('/admin/aliados', 'saved')}#solicitudes`);
 }

@@ -10,6 +10,7 @@ import {
   partnerPaths,
   slugify,
 } from '@/features/affiliates/affiliateRules';
+import type { ApplicationData } from '@/features/affiliates/applicationRules';
 import { hasDatabase } from './catalog';
 
 /**
@@ -491,4 +492,93 @@ function revalidatePartners(slugs: string[]): void {
   for (const slug of new Set(slugs)) {
     for (const path of Object.values(partnerPaths(slug))) revalidatePath(path);
   }
+}
+
+// -----------------------------------------------------------------------------
+// Solicitudes de afiliación (migración 0049)
+// -----------------------------------------------------------------------------
+
+export type ApplicationStatus = 'new' | 'contacted' | 'accepted' | 'rejected';
+
+export const APPLICATION_STATUSES: ApplicationStatus[] = ['new', 'contacted', 'accepted', 'rejected'];
+
+export interface AffiliateApplication extends ApplicationData {
+  id: string;
+  createdAt: string;
+  status: ApplicationStatus;
+  notes: string | null;
+  locale: string | null;
+}
+
+/** Cuántas mandó el mismo visitante en la última hora: el freno anti-ráfaga. */
+export async function countRecentApplications(visitorHash: string): Promise<number> {
+  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count, error } = await getSupabaseAdmin()
+    .from('affiliate_applications')
+    .select('id', { count: 'exact', head: true })
+    .eq('visitor_hash', visitorHash)
+    .gte('created_at', since);
+  if (error) throw new Error(explainApplications(error));
+  return count ?? 0;
+}
+
+export async function createApplication(data: ApplicationData, locale: string, visitorHash: string | null): Promise<void> {
+  const { error } = await getSupabaseAdmin().from('affiliate_applications').insert({
+    store_name: data.storeName,
+    website: data.website,
+    contact_name: data.contactName,
+    email: data.email,
+    phone: data.phone,
+    category: data.category,
+    message: data.message,
+    locale,
+    visitor_hash: visitorHash,
+  });
+  if (error) throw new Error(explainApplications(error));
+}
+
+export async function listApplications(): Promise<AffiliateApplication[]> {
+  const { data, error } = await getSupabaseAdmin()
+    .from('affiliate_applications')
+    .select('id, created_at, store_name, website, contact_name, email, phone, category, message, locale, status, notes')
+    .order('created_at', { ascending: false })
+    .limit(200);
+  if (error) throw new Error(explainApplications(error));
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    id: String(row.id),
+    createdAt: String(row.created_at),
+    storeName: String(row.store_name),
+    website: (row.website as string | null) ?? null,
+    contactName: String(row.contact_name),
+    email: String(row.email),
+    phone: (row.phone as string | null) ?? null,
+    category: (row.category as string | null) ?? null,
+    message: (row.message as string | null) ?? null,
+    locale: (row.locale as string | null) ?? null,
+    status: row.status as ApplicationStatus,
+    notes: (row.notes as string | null) ?? null,
+  }));
+}
+
+/** Solicitudes sin atender, para el aviso del panel. 0 si falta la migración. */
+export async function countNewApplications(): Promise<number> {
+  const { count, error } = await getSupabaseAdmin()
+    .from('affiliate_applications')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'new');
+  return error ? 0 : (count ?? 0);
+}
+
+export async function updateApplication(id: string, status: ApplicationStatus, notes: string): Promise<void> {
+  if (!APPLICATION_STATUSES.includes(status)) throw new Error('Estado inválido.');
+  const { error } = await getSupabaseAdmin()
+    .from('affiliate_applications')
+    .update({ status, notes: nullable(notes) })
+    .eq('id', id);
+  if (error) throw new Error(explainApplications(error));
+}
+
+function explainApplications(error: { code?: string; message: string }): string {
+  if (isMissingTable(error)) return 'Falta la tabla de solicitudes: corré la migración 0049_affiliate_applications.sql en Supabase.';
+  return error.message;
 }

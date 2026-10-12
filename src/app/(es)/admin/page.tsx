@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { NO_INDEX_ROBOTS } from '@/lib/seo/metadata';
 import { CACHE_SCOPES, isCacheScope } from '@/server/services/cacheRefresh';
 import { lockAdmin, refreshCacheAction } from './actions';
+import { countNewApplications } from '@/server/services/affiliates';
 import { hasAdminSession } from '@/server/admin/session';
 
 /**
@@ -67,6 +68,7 @@ export default async function AdminHubPage({ searchParams }: PageProps) {
   if (!(await hasAdminSession())) return null;
   const { cache, paths } = await searchParams;
   const refreshed = cache && isCacheScope(cache) ? CACHE_SCOPES.find((info) => info.scope === cache) : null;
+  const newApplications = await countNewApplications();
 
   return (
     <div className="min-h-screen bg-[var(--bg)]">
@@ -88,6 +90,22 @@ export default async function AdminHubPage({ searchParams }: PageProps) {
           <p className="enter mt-4 max-w-[60ch] text-[0.9375rem] leading-[1.55] text-[var(--text-secondary)]">
             Las herramientas del sitio y los cachés que se pueden refrescar a mano.
           </p>
+          {/* Una tienda que pidió ser aliada no puede quedarse esperando: el
+              aviso va arriba de todo hasta que alguien la atienda. */}
+          {newApplications > 0 && (
+            <Link
+              href="/admin/aliados#solicitudes"
+              className="enter mt-6 flex w-fit items-center gap-3 rounded-2xl bg-[var(--accent-soft)] px-4 py-3 text-[0.875rem] text-[var(--text)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            >
+              <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-[var(--accent)] px-1.5 text-[0.75rem] font-semibold tabular-nums text-[var(--text-inverted)]">
+                {newApplications}
+              </span>
+              {newApplications === 1
+                ? 'Una tienda pidió ser aliada y está esperando respuesta.'
+                : `${newApplications} tiendas pidieron ser aliadas y están esperando respuesta.`}
+              <span aria-hidden="true" className="text-[var(--accent)]">→</span>
+            </Link>
+          )}
         </div>
       </header>
 

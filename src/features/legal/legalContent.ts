@@ -66,10 +66,11 @@ const termsEs: LegalDoc = {
       ],
     },
     {
-      heading: "3. Cómo se ordena lo que ves",
+      heading: "3. Transparencia: cómo se ordena lo que ves y cómo se sostiene el sitio",
       paragraphs: [
         "El orden de los resultados lo determinan tu búsqueda, tus filtros y el criterio de orden que elijas. Ninguna tienda paga por aparecer, por aparecer antes, ni por aparecer con mejor calificación.",
-        "El sitio se sostiene con patrocinios y con un programa de afiliados, que vive aparte del comparador, en la sección Aliados. Nada de eso altera los resultados ni el orden del comparador.",
+        "El sitio se sostiene con patrocinios y con un programa de afiliados que vive aparte del comparador, en la sección Aliados. Los enlaces de esa sección son enlaces de afiliado: si comprás por ellos, el aliado puede pagarnos una comisión, sin ningún costo extra para vos.",
+        "Nada de eso altera los resultados ni el orden del comparador. Los códigos promocionales los define y los honra cada aliado; nosotros solo los publicamos y no respondemos si un aliado los cambia o los retira.",
       ],
     },
     {
@@ -86,7 +87,6 @@ const termsEs: LegalDoc = {
       heading: "5. Enlaces a sitios de terceros",
       paragraphs: [
         "Los productos enlazan a las tiendas de origen. Lo que pase en esos sitios —precios, stock, condiciones de compra, envíos, devoluciones, garantías y tratamiento de tus datos— se rige por los términos de cada tienda, no por estos.",
-        "Los enlaces de la sección Aliados son enlaces de afiliado: si comprás por ellos, el aliado nos paga una comisión, sin costo extra para vos. Los códigos promocionales los define y los honra cada aliado; nosotros solo los publicamos y no respondemos si un aliado los cambia o los retira.",
       ],
     },
     {
@@ -117,10 +117,11 @@ const privacyEs: LegalDoc = {
   lede: "Qué se guarda de vos cuando usás el sitio. Respuesta corta: casi nada, y nada que diga quién sos.",
   sections: [
     {
-      heading: "1. No pedimos datos personales",
+      heading: "1. Para comparar, no pedimos datos personales",
       paragraphs: [
-        "Find Your Prices no tiene cuentas ni registro. No pedimos tu nombre, tu correo, tu teléfono ni tu dirección, y no tenemos formularios que los recojan.",
-        "No vendemos, alquilamos ni compartimos información de nuestros visitantes, porque no la recogemos.",
+        "Find Your Prices no tiene cuentas ni registro. Para buscar y comparar precios no pedimos tu nombre, tu correo, tu teléfono ni tu dirección.",
+        "La única excepción es el formulario de la sección Aliados, para tiendas que quieren afiliarse. Lo que se escribe ahí —nombre de la tienda, sitio, nombre de contacto, correo y, si lo dejan, teléfono y mensaje— se usa solo para responder esa solicitud, no se comparte con nadie y se puede pedir que se borre escribiendo al correo de contacto.",
+        "No vendemos, alquilamos ni compartimos información personal de nuestros visitantes.",
       ],
     },
     {
@@ -270,10 +271,11 @@ const termsEn: LegalDoc = {
       ],
     },
     {
-      heading: "3. How results are ordered",
+      heading: "3. Transparency: how results are ordered and how the site is funded",
       paragraphs: [
         "Result order is determined by your search, your filters and the sort option you pick. No store pays to appear, to appear first, or to appear better rated.",
-        "The site is paid for by sponsorships and by an affiliate programme that lives apart from the comparator, in the Partners section. None of it alters comparison results or their order.",
+        "The site is paid for by sponsorships and by an affiliate programme that lives apart from the comparator, in the Partners section. Links in that section are affiliate links: if you buy through them, the partner may pay us a commission, at no extra cost to you.",
+        "None of it alters comparison results or their order. Promo codes are set and honoured by each partner; we only publish them and are not liable if a partner changes or withdraws them.",
       ],
     },
     {
@@ -290,7 +292,6 @@ const termsEn: LegalDoc = {
       heading: "5. Links to third-party sites",
       paragraphs: [
         "Products link out to their source stores. Whatever happens on those sites — prices, stock, purchase conditions, shipping, returns, warranties and the handling of your data — is governed by each store's own terms, not by these.",
-        "Links in the Partners section are affiliate links: if you buy through them, the partner pays us a commission, at no extra cost to you. Promo codes are set and honoured by each partner; we only publish them and are not liable if a partner changes or withdraws them.",
       ],
     },
     {
@@ -321,10 +322,11 @@ const privacyEn: LegalDoc = {
   lede: "What we keep about you when you use the site. Short answer: almost nothing, and nothing that says who you are.",
   sections: [
     {
-      heading: "1. We ask for no personal data",
+      heading: "1. Comparing needs no personal data",
       paragraphs: [
-        "Find Your Prices has no accounts and no sign-up. We do not ask for your name, email, phone number or address, and we have no forms that collect them.",
-        "We do not sell, rent or share visitor information, because we do not collect it.",
+        "Find Your Prices has no accounts and no sign-up. To search and compare prices we do not ask for your name, email, phone number or address.",
+        "The only exception is the form in the Partners section, for stores that want to become partners. What is entered there — store name, website, contact name, email and, if provided, phone and message — is used only to answer that request, is not shared with anyone, and can be deleted on request by writing to the contact email.",
+        "We do not sell, rent or share visitors' personal information.",
       ],
     },
     {

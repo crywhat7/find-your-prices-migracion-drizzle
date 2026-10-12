@@ -60,7 +60,7 @@ const es: AboutContent = {
       "No vendemos nada. No hay carrito, no hay pagos, no tocamos tu tarjeta.",
       "Las tiendas del comparador no nos pagan nada, ni por aparecer ni por salir más arriba. El orden lo deciden tus filtros.",
       "No somos la tienda. Los precios son referenciales y pueden cambiar; el que manda es el de la tienda al momento de comprar.",
-      "No tenemos relación comercial con las tiendas del comparador. Los aliados son otra cosa y van aparte, en su propia sección: si comprás por sus enlaces nos pagan una comisión, y eso está dicho ahí mismo.",
+      "No tenemos relación comercial con las tiendas del comparador. Los aliados son otra cosa y van aparte, en su propia sección: si comprás por sus enlaces nos pagan una comisión. Está explicado en los términos de uso.",
     ],
     policiesNote:
       "Si querés el detalle largo —de dónde salen los datos, qué guardamos y cómo pedir que retiremos algo—, está todo escrito:",
@@ -106,7 +106,7 @@ const en: AboutContent = {
       "We sell nothing. No cart, no payments, we never touch your card.",
       "The stores in the comparator pay us nothing, not to appear and not to rank higher. Your filters decide the order.",
       "We are not the store. Prices are indicative and can change; the one that counts is the store's price at checkout.",
-      "We have no commercial relationship with the stores in the comparator. Partners are a different thing and live apart, in their own section: if you buy through their links they pay us a commission, and that is stated right there.",
+      "We have no commercial relationship with the stores in the comparator. Partners are a different thing and live apart, in their own section: if you buy through their links they pay us a commission. It is explained in the terms of use.",
     ],
     policiesNote:
       "If you want the long version — where the data comes from, what we keep, and how to ask us to remove something — it is all written down:",

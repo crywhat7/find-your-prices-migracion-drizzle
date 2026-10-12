@@ -4,10 +4,9 @@ import type { Locale } from "@/features/i18n/translate";
  * Textos fijos de la sección de aliados, por idioma. Como `storeCopy.ts`:
  * las páginas son Server Components y la ruta pasa el idioma.
  *
- * La declaración de afiliado no es letra chica: va arriba, en las dos
- * páginas, y dice lo que pasa sin rodeos. Es lo que la ley de publicidad de
- * casi cualquier país pide y, sobre todo, lo que el compromiso "el
- * comparador no se vende" exige para que siga siendo cierto.
+ * Cómo funcionan los enlaces de afiliado no se explica acá sino en los
+ * términos de uso (sección "Transparencia"), como en cualquier sitio de
+ * afiliados: en la página, un aviso así se leía como advertencia.
  */
 export interface AffiliateCopy {
   breadcrumbs: string;
@@ -19,8 +18,6 @@ export interface AffiliateCopy {
   metaTitle: string;
   metaDescription: string;
   partnerMetaDescription: (partner: string, tagline: string | null) => string;
-  disclosureTitle: string;
-  disclosure: string;
   partnersHeading: string;
   partnersSub: string;
   offersHeading: string;
@@ -41,6 +38,33 @@ export interface AffiliateCopy {
   seeOffers: (count: number) => string;
   priceNote: string;
   partnerEyebrow: string;
+  apply: ApplyCopy;
+}
+
+/** El formulario "¿Tenés una tienda?" de /aliados. */
+export interface ApplyCopy {
+  cta: string;
+  heading: string;
+  sub: string;
+  storeName: string;
+  website: string;
+  websitePlaceholder: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  phoneHint: string;
+  category: string;
+  categoryPlaceholder: string;
+  message: string;
+  messagePlaceholder: string;
+  optional: string;
+  privacy: string;
+  submit: string;
+  sending: string;
+  successTitle: string;
+  successBody: string;
+  emailAlternative: string;
+  emailSubject: string;
 }
 
 export const AFFILIATE_COPY: Record<Locale, AffiliateCopy> = {
@@ -57,9 +81,6 @@ export const AFFILIATE_COPY: Record<Locale, AffiliateCopy> = {
       "Códigos promocionales y ofertas de las tiendas en línea aliadas de Find Your Prices, para comprar desde Honduras.",
     partnerMetaDescription: (partner, tagline) =>
       `Código promocional y ofertas de ${partner}${tagline ? `: ${tagline.toLowerCase()}` : ""}. Comprá desde Honduras con descuento.`,
-    disclosureTitle: "Cómo funciona esto",
-    disclosure:
-      "Son enlaces de afiliado: si comprás por ellos, el aliado nos paga una comisión. A vos no te cuesta nada extra, y no cambia en nada el comparador: ahí ninguna tienda paga por aparecer ni por salir primero. Así se sostiene el sitio sin anuncios.",
     partnersHeading: "Nuestros aliados",
     partnersSub: "Entrá a cada uno para ver sus ofertas.",
     offersHeading: "Ofertas destacadas",
@@ -80,6 +101,30 @@ export const AFFILIATE_COPY: Record<Locale, AffiliateCopy> = {
     seeOffers: (count) => (count === 1 ? "1 oferta" : `${count} ofertas`),
     priceNote: "Precio publicado por el aliado, en su moneda. Puede cambiar.",
     partnerEyebrow: "Aliado",
+    apply: {
+      cta: "¿Tenés una tienda? Afiliate",
+      heading: "¿Tenés una tienda en línea?",
+      sub: "Si querés aparecer como aliado, con tu código y tus ofertas, dejanos tus datos y te escribimos.",
+      storeName: "Nombre de la tienda",
+      website: "Sitio web",
+      websitePlaceholder: "tutienda.com",
+      contactName: "Tu nombre",
+      email: "Correo",
+      phone: "Teléfono o WhatsApp",
+      phoneHint: "Por si es más fácil hablar por ahí.",
+      category: "Qué vendés",
+      categoryPlaceholder: "Juegos, ropa, electrónica…",
+      message: "Algo más que debamos saber",
+      messagePlaceholder: "Tu programa de afiliados, comisiones, códigos…",
+      optional: "opcional",
+      privacy: "Usamos estos datos solo para contactarte por esta solicitud.",
+      submit: "Enviar solicitud",
+      sending: "Enviando…",
+      successTitle: "Listo, recibimos tu solicitud",
+      successBody: "Te vamos a escribir al correo que dejaste.",
+      emailAlternative: "¿Preferís escribirnos directo?",
+      emailSubject: "Quiero ser aliado de Find Your Prices",
+    },
   },
   en: {
     breadcrumbs: "Breadcrumb",
@@ -94,9 +139,6 @@ export const AFFILIATE_COPY: Record<Locale, AffiliateCopy> = {
       "Promo codes and deals from Find Your Prices' partner online stores, for shopping from Honduras.",
     partnerMetaDescription: (partner, tagline) =>
       `${partner} promo code and deals${tagline ? `: ${tagline.toLowerCase()}` : ""}. Shop from Honduras for less.`,
-    disclosureTitle: "How this works",
-    disclosure:
-      "These are affiliate links: if you buy through them, the partner pays us a commission. It costs you nothing extra and changes nothing in the comparator, where no store pays to appear or to rank first. That is how the site pays for itself without ads.",
     partnersHeading: "Our partners",
     partnersSub: "Open each one to see its deals.",
     offersHeading: "Featured deals",
@@ -117,5 +159,29 @@ export const AFFILIATE_COPY: Record<Locale, AffiliateCopy> = {
     seeOffers: (count) => (count === 1 ? "1 deal" : `${count} deals`),
     priceNote: "Price published by the partner, in its currency. It may change.",
     partnerEyebrow: "Partner",
+    apply: {
+      cta: "Have a store? Become a partner",
+      heading: "Do you run an online store?",
+      sub: "If you want to appear as a partner, with your code and your deals, leave your details and we will get in touch.",
+      storeName: "Store name",
+      website: "Website",
+      websitePlaceholder: "yourstore.com",
+      contactName: "Your name",
+      email: "Email",
+      phone: "Phone or WhatsApp",
+      phoneHint: "In case it is easier to talk there.",
+      category: "What you sell",
+      categoryPlaceholder: "Games, clothing, electronics…",
+      message: "Anything else we should know",
+      messagePlaceholder: "Your affiliate programme, commissions, codes…",
+      optional: "optional",
+      privacy: "We only use these details to contact you about this request.",
+      submit: "Send request",
+      sending: "Sending…",
+      successTitle: "Done, we got your request",
+      successBody: "We will write to the email you left.",
+      emailAlternative: "Prefer to email us directly?",
+      emailSubject: "I want to become a Find Your Prices partner",
+    },
   },
 };
