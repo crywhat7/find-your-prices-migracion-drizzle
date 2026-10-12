@@ -30,8 +30,10 @@ export async function POST(request: Request): Promise<Response> {
   const site = request.headers.get("sec-fetch-site");
   if (site && site !== "same-origin") return done;
 
+  // Los bots los registra `src/proxy.ts` del lado del servidor; si uno
+  // además ejecuta JavaScript, acá no se cuenta de nuevo.
   const visitor = readVisitor(request.headers);
-  if (!visitor) return done;
+  if (visitor.isBot) return done;
 
   let payload: Record<string, unknown>;
   try {

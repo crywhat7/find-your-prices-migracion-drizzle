@@ -67,10 +67,10 @@ export async function submitAffiliateApplication(_previous: ApplyState, formData
 
   try {
     const visitor = readVisitor(await headers());
-    if (visitor && (await countRecentApplications(visitor.visitorHash)) >= 3) {
+    if ((await countRecentApplications(visitor.visitorHash)) >= 3) {
       return { status: 'error', message: copy.tooMany, values };
     }
-    await createApplication(result.data, locale, visitor?.visitorHash ?? null);
+    await createApplication(result.data, locale, visitor.visitorHash);
   } catch (error) {
     console.error('[aliados] no se pudo guardar la solicitud:', error);
     return { status: 'error', message: copy.failed, values };

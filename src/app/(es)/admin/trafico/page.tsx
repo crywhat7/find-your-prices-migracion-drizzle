@@ -15,6 +15,7 @@ import { HourHeatmap } from '@/features/admin-analytics/HourHeatmap';
 import { deriveKpis, loadTraffic } from '@/features/admin-analytics/loadTraffic';
 import { TimeSeriesChart } from '@/features/admin-analytics/TimeSeriesChart';
 import { BarList, Card, RangeControls, StatTile } from '@/features/admin-analytics/Widgets';
+import { BotToggle } from '@/features/admin-analytics/BotToggle';
 import { NO_INDEX_ROBOTS } from '@/lib/seo/metadata';
 import { hasAdminSession } from '@/server/admin/session';
 
@@ -27,7 +28,7 @@ export const metadata: Metadata = { title: 'Tráfico', robots: NO_INDEX_ROBOTS }
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ range?: string; from?: string; to?: string; bots?: string }>;
 }
 
 const BUCKET_LABEL = { day: 'por día', week: 'por semana', month: 'por mes' } as const;
@@ -38,9 +39,12 @@ export default async function TrafficPage({ searchParams }: PageProps) {
   if (!(await hasAdminSession())) return null;
   const params = await searchParams;
   const { range, report, previous, live, error } = await loadTraffic(params, 15);
-  const query = new URLSearchParams(
-    Object.entries({ range: range.key, from: range.fromDate, to: range.toDate }).filter(([, value]) => value),
-  ).toString();
+  const includeBots = params.bots === '1';
+  const baseQuery = { range: range.key, from: range.fromDate, to: range.toDate };
+  const query = new URLSearchParams({ ...baseQuery, ...(includeBots ? { bots: '1' } : {}) }).toString();
+  // El reporte para aliados va siempre sin bots: son cifras de personas.
+  const reportQuery = new URLSearchParams(baseQuery).toString();
+  const toggleHref = `/admin/trafico?${new URLSearchParams({ ...baseQuery, ...(includeBots ? {} : { bots: '1' }) })}`;
 
   return (
     <div className="min-h-screen bg-[var(--bg)]">
@@ -70,7 +74,7 @@ export default async function TrafficPage({ searchParams }: PageProps) {
                 <strong className="font-semibold tabular-nums">{formatInt(live)}</strong> en los últimos 30 min
               </p>
               <Link
-                href={`/admin/trafico/reporte?${query}`}
+                href={`/admin/trafico/reporte?${reportQuery}`}
                 className="rounded-full bg-[var(--text)] px-4 py-1.5 text-[0.8125rem] font-medium text-[var(--text-inverted)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               >
                 Reporte para aliados
@@ -83,8 +87,9 @@ export default async function TrafficPage({ searchParams }: PageProps) {
               </a>
             </div>
           </div>
-          <div className="mt-8">
-            <RangeControls range={range} basePath="/admin/trafico" />
+          <div className="mt-8 space-y-4">
+            <RangeControls range={range} basePath="/admin/trafico" extra={includeBots ? { bots: '1' } : {}} />
+            <BotToggle checked={includeBots} toggleHref={toggleHref} botViews={report?.botViews ?? 0} />
           </div>
         </div>
       </header>
@@ -96,7 +101,7 @@ export default async function TrafficPage({ searchParams }: PageProps) {
               {error ?? 'No se pudo leer el tráfico.'}
             </p>
           ) : (
-            <Dashboard report={report} previous={previous} range={range} />
+            <Dashboard report={report} previous={previous} range={range} includeBots={includeBots} />
           )}
         </div>
       </main>
@@ -108,10 +113,12 @@ function Dashboard({
   report,
   previous,
   range,
+  includeBots,
 }: {
   report: NonNullable<Awaited<ReturnType<typeof loadTraffic>>['report']>;
   previous: Awaited<ReturnType<typeof loadTraffic>>['previous'];
   range: Awaited<ReturnType<typeof loadTraffic>>['range'];
+  includeBots: boolean;
 }) {
   const kpi = deriveKpis(report, previous, range.days);
   const total = report.totals.views;
@@ -172,7 +179,19 @@ function Dashboard({
         <HourHeatmap cells={report.heatmap} />
       </Card>
 
-      <Card title="Clics hacia aliados" hint="Salidas por /go/<aliado>, sin bots. Visitantes = personas distintas que hicieron clic.">
+      {includeBots && (
+        <Card
+          title="Bots y rastreadores"
+          hint="Vistas registradas en el servidor de buscadores, vistas previas de enlaces (WhatsApp, Facebook), IA y scripts. Ahora están sumadas en todas las cifras de arriba."
+        >
+          <BarList rows={report.bots} total={report.botViews} empty="Ningún bot en el período." />
+        </Card>
+      )}
+
+      <Card
+        title="Clics hacia aliados"
+        hint={`Salidas por /go/<aliado>${includeBots ? ', bots incluidos' : ', sin bots'}. Visitantes = visitantes distintos que hicieron clic.`}
+      >
         <BarList
           rows={report.partnerClicks}
           total={report.partnerClicks.reduce((sum, row) => sum + row.views, 0)}
@@ -182,7 +201,8 @@ function Dashboard({
 
       <p className="text-[0.75rem] leading-[1.55] text-[var(--text-tertiary)]">
         Visitantes únicos: se cuentan por mes (el identificador anónimo se renueva el día 1), así que un rango que cruza
-        meses puede contar dos veces a la misma persona. Los bots y vistas previas de enlaces no se cuentan.
+        meses puede contar dos veces a la misma persona. Los bots y las vistas previas de enlaces solo se cuentan con
+        «Incluir bots» marcado.
       </p>
     </>
   );

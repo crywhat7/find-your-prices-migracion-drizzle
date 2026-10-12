@@ -29,10 +29,11 @@ export async function GET(request: Request): Promise<Response> {
 
   const params = Object.fromEntries(new URL(request.url).searchParams);
   const range = resolveRange(params);
-  const report = await getAnalyticsReport(range.from, range.to, range.bucket, 100);
+  const includeBots = params.bots === "1";
+  const report = await getAnalyticsReport(range.from, range.to, range.bucket, 100, includeBots);
 
   const lines = [
-    `Find Your Prices — tráfico del ${range.fromDate} al ${range.toDate} (hora de Honduras)`,
+    `Find Your Prices — tráfico del ${range.fromDate} al ${range.toDate} (hora de Honduras)${includeBots ? ", bots incluidos" : ", sin bots"}`,
     "",
     "Totales",
     "Vistas,Visitantes únicos,Sesiones,Desde teléfono,Desde Honduras",
@@ -52,10 +53,11 @@ export async function GET(request: Request): Promise<Response> {
     ...section("Referencias", report.referrers),
     ...section("Campañas UTM", report.campaigns),
     ...section("Clics a aliados", report.partnerClicks),
+    ...(includeBots ? section("Bots", report.bots) : []),
   ];
 
   // BOM para que Excel lea las tildes en UTF-8.
-  return new Response(`﻿${lines.join("\r\n")}`, {
+  return new Response(`\uFEFF${lines.join("\r\n")}`, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="trafico-${range.fromDate}-a-${range.toDate}.csv"`,

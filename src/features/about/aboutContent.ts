@@ -1,4 +1,12 @@
+import { siteConfig } from "@/config/site";
 import type { Locale } from "@/features/i18n/translate";
+
+/** "Walmart Honduras, Diunsa … y Meyko", con la conjunción de cada idioma. */
+function storeList(locale: Locale): string {
+  return new Intl.ListFormat(locale, { style: "long", type: "conjunction" }).format(siteConfig.stores);
+}
+
+const STORE_COUNT = siteConfig.stores.length;
 
 /**
  * Texto de la página "Acerca de", en los dos idiomas.
@@ -35,7 +43,7 @@ const es: AboutContent = {
     heading: "Qué es esto",
     paragraphs: [
       "Find Your Prices junta en una sola búsqueda lo que venden las tiendas de Honduras. En vez de abrir seis pestañas para averiguar dónde está más barato un televisor, lo buscás una vez y ves los precios de todas las tiendas al mismo tiempo.",
-      "El catálogo se actualiza solo, varias veces al día. Cada producto conserva el enlace a la tienda donde está: acá comparás, y la compra la hacés donde siempre.",
+      "El catálogo se actualiza solo: cada tienda se vuelve a revisar una o dos veces por semana. Cada producto conserva el enlace a la tienda donde está: acá comparás, y la compra la hacés donde siempre.",
       "Es gratis y no pide cuenta. Lo hicimos porque no existía y nos hacía falta.",
     ],
   },
@@ -49,7 +57,8 @@ const es: AboutContent = {
   sourcing: {
     heading: "De dónde salen los precios",
     paragraphs: [
-      "Un proceso automático pasa por las páginas públicas de Diunsa, Jetstereo, RadioShack, ACOSA y Lady Lee varias veces al día y anota lo que encuentra: nombre, precio, si hay existencia y el enlace. Nada que no puedas ver vos abriendo la página.",
+      `Un proceso automático pasa por las páginas públicas de ${STORE_COUNT} tiendas —${storeList("es")}— y anota lo que encuentra: nombre, precio, si hay existencia y el enlace. Nada que no puedas ver vos abriendo la página.`,
+      "Los supermercados y las farmacias, donde los precios se mueven más, se revisan dos veces por semana; el resto, una vez por semana.",
       "Leerlas no es lo difícil; emparejarlas sí. Una tienda escribe «Cel. Samsung A15 128Gb» y otra «SAMSUNG Galaxy A-15 Negro 128 GB», y es el mismo teléfono. Ahí se va la mayor parte del trabajo y todavía no está resuelto del todo: si ves un precio que no cuadra, o dos productos que deberían ser uno solo, escribinos y lo corregimos.",
     ],
   },
@@ -81,7 +90,7 @@ const en: AboutContent = {
     heading: "What this is",
     paragraphs: [
       "Find Your Prices puts what Honduran stores sell into a single search. Instead of opening six tabs to find out where a TV is cheaper, you search once and see every store's price side by side.",
-      "The catalogue refreshes on its own, several times a day. Every product keeps the link to the store it came from: you compare here, and you buy where you always did.",
+      "The catalogue refreshes on its own: each store is read again once or twice a week. Every product keeps the link to the store it came from: you compare here, and you buy where you always did.",
       "It is free and asks for no account. We built it because it did not exist and we wanted it.",
     ],
   },
@@ -95,7 +104,8 @@ const en: AboutContent = {
   sourcing: {
     heading: "Where the prices come from",
     paragraphs: [
-      "An automated process walks the public pages of Diunsa, Jetstereo, RadioShack, ACOSA and Lady Lee several times a day and writes down what it finds: name, price, whether it is in stock, and the link. Nothing you could not see yourself by opening the page.",
+      `An automated process walks the public pages of ${STORE_COUNT} stores — ${storeList("en")} — and writes down what it finds: name, price, whether it is in stock, and the link. Nothing you could not see yourself by opening the page.`,
+      "Supermarkets and pharmacies, where prices move the most, are read twice a week; the rest, once a week.",
       "Reading them is not the hard part; matching them is. One store writes “Cel. Samsung A15 128Gb” and another “SAMSUNG Galaxy A-15 Black 128 GB”, and it is the same phone. That is where most of the work goes and it is not fully solved: if you spot a price that looks wrong, or two products that should be one, write to us and we will fix it.",
     ],
   },

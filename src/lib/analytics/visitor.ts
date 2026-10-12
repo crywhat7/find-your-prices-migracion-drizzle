@@ -141,3 +141,102 @@ export function isTrackablePath(path: string): boolean {
   if (!path.startsWith("/") || path.length > 300) return false;
   return !/^\/(admin|api|go|_next)(\/|$)/.test(path);
 }
+
+const KNOWN_BOTS: [RegExp, string][] = [
+  [/Googlebot-Image/i, "Googlebot Imágenes"],
+  [/Google-InspectionTool/i, "Google Search Console"],
+  [/Googlebot|Google-Site-Verification|GoogleOther/i, "Googlebot"],
+  [/AdsBot-Google|Mediapartners-Google/i, "Google Ads"],
+  [/bingbot|BingPreview|msnbot/i, "Bingbot"],
+  [/YandexBot|YandexImages/i, "YandexBot"],
+  [/Baiduspider/i, "Baidu"],
+  [/DuckDuckBot|DuckAssistBot/i, "DuckDuckGo"],
+  [/Applebot/i, "Applebot"],
+  [/facebookexternalhit|facebookcatalog|meta-externalagent|Facebot/i, "Facebook / Meta"],
+  [/WhatsApp/i, "WhatsApp (vista previa)"],
+  [/Twitterbot/i, "X / Twitter"],
+  [/LinkedInBot/i, "LinkedIn"],
+  [/TelegramBot/i, "Telegram"],
+  [/Slackbot/i, "Slack"],
+  [/Discordbot/i, "Discord"],
+  [/GPTBot|ChatGPT-User|OAI-SearchBot/i, "OpenAI"],
+  [/ClaudeBot|Claude-User|Claude-SearchBot|anthropic-ai/i, "Anthropic"],
+  [/PerplexityBot|Perplexity-User/i, "Perplexity"],
+  [/Bytespider|TikTokSpider/i, "ByteDance / TikTok"],
+  [/Amazonbot/i, "Amazonbot"],
+  [/CCBot/i, "Common Crawl"],
+  [/AhrefsBot|AhrefsSiteAudit/i, "Ahrefs"],
+  [/SemrushBot|SiteAuditBot/i, "Semrush"],
+  [/MJ12bot/i, "Majestic"],
+  [/DotBot/i, "Moz"],
+  [/PetalBot/i, "PetalBot (Huawei)"],
+  [/Lighthouse|Chrome-Lighthouse|PageSpeed/i, "Lighthouse / PageSpeed"],
+  [/HeadlessChrome|Puppeteer|Playwright|PhantomJS/i, "Navegador automatizado"],
+  [/curl\/|wget\/|python|axios|node-fetch|Go-http-client|java\/|okhttp|httpclient|scrapy/i, "Script / cliente HTTP"],
+  [/uptime|pingdom|monitor|statuscake|better ?stack/i, "Monitor de disponibilidad"],
+];
+
+/**
+ * El nombre legible de un bot, para el desglose del panel. Los conocidos por
+ * su nombre; el resto, por la palabra con "bot"/"crawl"/"spider" que traiga
+ * su agente, o "Otro bot".
+ */
+export function botName(userAgent: string): string {
+  if (!userAgent.trim()) return "Sin agente";
+  for (const [pattern, name] of KNOWN_BOTS) if (pattern.test(userAgent)) return name;
+  const token = userAgent.match(/[A-Za-z0-9_.-]*(?:bot|crawl|spider|slurp)[A-Za-z0-9_.-]*/i)?.[0];
+  return token ? token.slice(0, 40) : "Otro bot";
+}
+
+// -----------------------------------------------------------------------------
+// Cabeceras del proveedor (Cloudflare primero, Vercel como alternativa)
+// -----------------------------------------------------------------------------
+
+/**
+ * La IP real. En Cloudflare `cf-connecting-ip` es la fuente confiable: la
+ * pone Cloudflare y el visitante no la puede falsear, cosa que sí puede con
+ * `x-forwarded-for`. Las demás quedan para otros proveedores.
+ */
+export function clientIp(headers: Headers): string {
+  const cloudflare = headers.get("cf-connecting-ip")?.trim();
+  if (cloudflare) return cloudflare;
+  const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return forwarded || headers.get("x-real-ip") || "";
+}
+
+function header(headers: Headers, name: string): string | null {
+  const value = headers.get(name)?.trim();
+  if (!value) return null;
+  try {
+    // Algunos proveedores mandan la ciudad codificada ("San%20Pedro%20Sula").
+    return decodeURIComponent(value).slice(0, 80);
+  } catch {
+    return value.slice(0, 80);
+  }
+}
+
+export interface Geo {
+  country: string | null;
+  region: string | null;
+  city: string | null;
+}
+
+/**
+ * Ubicación aproximada desde las cabeceras que pone el proveedor, sin
+ * consultar a nadie más. En Cloudflare (donde corre el sitio):
+ *   - `cf-ipcountry` llega siempre.
+ *   - `cf-ipcity`, `cf-region-code` y `cf-region` solo llegan con la regla
+ *     administrada "Add visitor location headers" activada en el panel de
+ *     Cloudflare (Rules → Settings → Managed Transforms). Sin ella, país sí,
+ *     ciudad no.
+ * Las de Vercel quedan como alternativa. En local no existe ninguna.
+ */
+export function readGeo(headers: Headers): Geo {
+  const country = header(headers, "cf-ipcountry") ?? header(headers, "x-vercel-ip-country");
+  return {
+    // Cloudflare usa "XX" para desconocido y "T1" para Tor: ninguno es un país.
+    country: country && /^[A-Z]{2}$/.test(country) && country !== "XX" ? country : null,
+    region: header(headers, "cf-region-code") ?? header(headers, "cf-region") ?? header(headers, "x-vercel-ip-country-region"),
+    city: header(headers, "cf-ipcity") ?? header(headers, "x-vercel-ip-city"),
+  };
+}

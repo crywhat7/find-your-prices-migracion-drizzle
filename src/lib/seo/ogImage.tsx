@@ -41,7 +41,12 @@ const MARK_WIDTH = Math.round((MARK_HEIGHT * BRAND_MARK_SIZE.width) / BRAND_MARK
  * tiempo de ejecución.
  */
 export function renderBrandOgImage(locale: Locale): ImageResponse {
-  const stores = siteConfig.stores.join(" · ");
+  // Con 23 tiendas no caben todas en una línea: las primeras cinco y el resto
+  // como número.
+  const shown = siteConfig.stores.slice(0, 5);
+  const rest = siteConfig.stores.length - shown.length;
+  const stores =
+    shown.join(" · ") + (rest > 0 ? ` · ${locale === "es" ? `y ${rest} tiendas más` : `and ${rest} more stores`}` : "");
 
   return new ImageResponse(
     (
@@ -112,6 +117,7 @@ export function renderBrandOgImage(locale: Locale): ImageResponse {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            gap: 40,
             borderTop: "1px solid rgba(245,245,247,0.14)",
             paddingTop: 28,
           }}

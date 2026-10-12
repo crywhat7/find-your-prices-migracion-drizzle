@@ -31,6 +31,45 @@ function resolveSiteUrl(): string {
 }
 
 /**
+ * Tiendas rastreadas, por nombre comercial tal como la gente las busca.
+ *
+ * No es decorativo: alimenta las palabras clave, la descripción del sitio,
+ * la tarjeta para compartir y el texto de "Acerca de". "precios diunsa" y
+ * "walmart honduras precios" son consultas reales con volumen; el nombre
+ * genérico "comparador de precios" no lo es tanto. Mantener esta lista al día
+ * cuando entre una tienda nueva (la lista viva está en la tabla `stores`).
+ *
+ * El orden importa: las primeras son las que se nombran cuando no caben
+ * todas (descripción del sitio, tarjeta para compartir). Van de más a menos
+ * buscadas, no por tamaño del catálogo.
+ */
+const STORES = [
+  "Walmart Honduras",
+  "Diunsa",
+  "Larach",
+  "Paiz",
+  "PriceSmart",
+  "Jetstereo",
+  "Kielsa",
+  "Lady Lee",
+  "ACOSA",
+  "Comisariato Los Andes",
+  "Farmacia Siman",
+  "Office Depot",
+  "Steren",
+  "RadioShack",
+  "Zara",
+  "Metromedia",
+  "Paper Depot",
+  "Útiles de Honduras",
+  "Game Station",
+  "Okashi",
+  "PC Builds Honduras",
+  "Prive Perfumes",
+  "Meyko",
+] as const;
+
+/**
  * Datos del sitio que necesitan más de un módulo.
  *
  * Buena parte de esto existe para SEO: el título, la descripción y las
@@ -42,8 +81,7 @@ export const siteConfig = {
   name: "Find Your Prices",
   /** Nombre corto: pestañas del navegador, icono en el escritorio, manifest. */
   shortName: "FindYourPrices",
-  description:
-    "Compará precios de Diunsa, Walmart, Jetstereo, RadioShack, ACOSA, Lady Lee y Steren en un solo lugar. Catálogo de Honduras actualizado varias veces al día, con historial de precios.",
+  description: `Compará precios de ${STORES.length} tiendas de Honduras en un solo lugar: Walmart, Diunsa, Larach, Paiz, PriceSmart, Jetstereo, Kielsa y más. Con historial de precios.`,
   url: resolveSiteUrl(),
 
   /** País y moneda del catálogo. Los usan el JSON-LD y el formato de precios. */
@@ -84,23 +122,8 @@ export const siteConfig = {
     { nick: "fq962", url: "https://github.com/fq962" },
   ] as const,
 
-  /**
-   * Tiendas rastreadas, por nombre comercial tal como la gente las busca.
-   *
-   * No es decorativo: alimenta las palabras clave y la descripción del sitio.
-   * "precios diunsa" y "walmart honduras precios" son consultas reales con
-   * volumen; el nombre genérico "comparador de precios" no lo es tanto.
-   * Mantener esta lista al día cuando entre una tienda nueva.
-   */
-  stores: [
-    "Diunsa",
-    "Walmart Honduras",
-    "Jetstereo",
-    "RadioShack",
-    "ACOSA",
-    "Lady Lee",
-    "Steren",
-  ] as const,
+  /** Ver `STORES` arriba. */
+  stores: STORES,
 
   links: {
     // Rellena aquí los enlaces sociales / repos cuando existan.
@@ -132,7 +155,7 @@ export const siteConfig = {
 /** Descripción del sitio en cada idioma. La raíz de cada `<meta description>`. */
 export const SITE_DESCRIPTION: Record<Locale, string> = {
   es: siteConfig.description,
-  en: "Compare prices from Diunsa, Walmart, Jetstereo, RadioShack, ACOSA, Lady Lee and Steren in one place. Honduras catalog refreshed several times a day, with price history.",
+  en: `Compare prices from ${STORES.length} stores in Honduras in one place: Walmart, Diunsa, Larach, Paiz, PriceSmart, Jetstereo, Kielsa and more. With price history.`,
 };
 
 /** Lema corto. Va en el OG de marca y en el manifest, donde no cabe la larga. */

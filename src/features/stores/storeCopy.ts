@@ -62,8 +62,8 @@ export const STORE_COPY: Record<Locale, StoreCopy> = {
         : `Todo el catálogo de ${store}, con precio actualizado. Filtrá por categoría, marca y precio.`,
     intro: (store, category, products, categories) =>
       category
-        ? `Precios de ${category.toLowerCase()} en ${store}, Honduras: ${products} artículos con precio actualizado varias veces al día y su historial, para saber si la oferta de ${store} es real o si otra tienda lo tiene más barato.`
-        : `Todo lo que ${store} publica en Honduras, en un solo lugar: ${products} artículos en ${categories} categorías, con precio actualizado varias veces al día y su historial. Cada artículo se compara con las demás tiendas.`,
+        ? `Precios de ${category.toLowerCase()} en ${store}, Honduras: ${products} artículos con precio actualizado cada semana y su historial, para saber si la oferta de ${store} es real o si otra tienda lo tiene más barato.`
+        : `Todo lo que ${store} publica en Honduras, en un solo lugar: ${products} artículos en ${categories} categorías, con precio actualizado cada semana y su historial. Cada artículo se compara con las demás tiendas.`,
     visitStore: (store) => `Ir al sitio de ${store}`,
     inStore: (category, store) => `${category} en ${store}`,
   },
@@ -95,8 +95,8 @@ export const STORE_COPY: Record<Locale, StoreCopy> = {
         : `${store}'s whole catalog, with up-to-date prices. Filter by category, brand and price.`,
     intro: (store, category, products, categories) =>
       category
-        ? `${category} prices at ${store}, Honduras: ${products} products with prices updated several times a day and their history, so you know whether ${store}'s deal is real or another store has it cheaper.`
-        : `Everything ${store} publishes in Honduras, in one place: ${products} products across ${categories} categories, with prices updated several times a day and their history. Every product is compared with the other stores.`,
+        ? `${category} prices at ${store}, Honduras: ${products} products with prices updated every week and their history, so you know whether ${store}'s deal is real or another store has it cheaper.`
+        : `Everything ${store} publishes in Honduras, in one place: ${products} products across ${categories} categories, with prices updated every week and their history. Every product is compared with the other stores.`,
     visitStore: (store) => `Go to ${store}'s site`,
     inStore: (category, store) => `${category} at ${store}`,
   },

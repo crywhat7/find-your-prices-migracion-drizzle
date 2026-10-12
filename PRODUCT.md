@@ -148,7 +148,9 @@ producto hace.
   ubicación aproximada (cabeceras de Cloudflare), dispositivo, navegador y
   sistema. **La IP no se guarda**: solo un HMAC con sal mensual para contar
   únicos dentro del mes. Se ven en `/admin/trafico`, con un reporte
-  imprimible para aliados. La política de privacidad lo describe; si cambia
+  imprimible para aliados. Los bots se registran aparte desde `src/proxy.ts`
+  (migración 0050), marcados y con nombre; el panel los muestra solo con
+  «Incluir bots» marcado, y el reporte para aliados nunca los suma. La política de privacidad lo describe; si cambia
   lo que se guarda, cambia ella también.
 
 **Decisiones abiertas, no inventar**

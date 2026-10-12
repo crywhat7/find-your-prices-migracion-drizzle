@@ -20,15 +20,18 @@ export interface TrafficParams {
   range?: string;
   from?: string;
   to?: string;
+  /** "1" = incluir bots en todas las cifras. */
+  bots?: string;
 }
 
 /** Todo lo que piden el panel y el reporte, en paralelo. Un fallo no tumba la página. */
 export async function loadTraffic(params: TrafficParams, limit = 12): Promise<TrafficData> {
   const range = resolveRange(params);
+  const includeBots = params.bots === '1';
   try {
     const [report, previous, live] = await Promise.all([
-      getAnalyticsReport(range.from, range.to, range.bucket, limit),
-      getAnalyticsTotals(range.prevFrom, range.prevTo),
+      getAnalyticsReport(range.from, range.to, range.bucket, limit, includeBots),
+      getAnalyticsTotals(range.prevFrom, range.prevTo, includeBots),
       getLiveVisitors(),
     ]);
     return { range, report, previous, live, error: null };

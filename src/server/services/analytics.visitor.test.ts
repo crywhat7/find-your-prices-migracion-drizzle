@@ -42,3 +42,16 @@ describe("readVisitor en Cloudflare", () => {
     expect(octubre?.visitorHash).not.toBe(noviembre?.visitorHash);
   });
 });
+
+describe("readVisitor con bots", () => {
+  it("marca al bot con su nombre en vez de descartarlo", () => {
+    const visitor = readVisitor(
+      new Headers({ "user-agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)", "cf-ipcountry": "US" }),
+    );
+    expect(visitor).toMatchObject({ isBot: true, botName: "Googlebot", country: "US" });
+  });
+
+  it("una persona no es bot", () => {
+    expect(readVisitor(new Headers({ "user-agent": UA }))).toMatchObject({ isBot: false, botName: null });
+  });
+});

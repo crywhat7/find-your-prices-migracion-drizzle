@@ -57,7 +57,7 @@ export const CATEGORY_COPY: Record<Locale, CategoryCopy> = {
       `Filtrá ${name.toLowerCase()} por tienda, marca y precio. Todo el catálogo de esta categoría, con precio actualizado.`,
     aboutHeading: (name) => `${name} en Honduras`,
     defaultIntro: (name, products, stores) =>
-      `Compará precios de ${name.toLowerCase()} en ${stores} tiendas de Honduras. ${products} artículos con precio actualizado varias veces al día y su historial, para saber si la oferta es real.`,
+      `Compará precios de ${name.toLowerCase()} en ${stores} tiendas de Honduras. ${products} artículos con precio actualizado cada semana y su historial, para saber si la oferta es real.`,
     defaultBody: (name, children) => {
       const lower = name.toLowerCase();
       const parts = [
@@ -99,7 +99,7 @@ export const CATEGORY_COPY: Record<Locale, CategoryCopy> = {
       `Filter ${name.toLowerCase()} by store, brand and price. The full catalog of this category, with up-to-date prices.`,
     aboutHeading: (name) => `${name} in Honduras`,
     defaultIntro: (name, products, stores) =>
-      `Compare ${name.toLowerCase()} prices across ${stores} stores in Honduras. ${products} products with prices updated several times a day and their history, so you know whether a deal is real.`,
+      `Compare ${name.toLowerCase()} prices across ${stores} stores in Honduras. ${products} products with prices updated every week and their history, so you know whether a deal is real.`,
     defaultBody: (name, children) => {
       const lower = name.toLowerCase();
       const parts = [

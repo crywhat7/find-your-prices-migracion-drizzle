@@ -236,7 +236,7 @@ const contentEs: LegalDoc = {
       heading: "6. Si un dato está equivocado",
       paragraphs: [
         `Si un precio, una imagen o una disponibilidad no corresponden a lo que publica la tienda, escribinos a ${EMAIL} con el enlace del producto. Lo corregimos o lo quitamos.`,
-        "Los datos se refrescan varias veces al día, así que un dato desactualizado suele corregirse solo en cuestión de horas.",
+        "Cada tienda se vuelve a revisar una o dos veces por semana, así que un dato desactualizado suele corregirse solo en pocos días.",
       ],
     },
     {
@@ -441,7 +441,7 @@ const contentEn: LegalDoc = {
       heading: "6. If something is wrong",
       paragraphs: [
         `If a price, image or availability does not match what the store publishes, write to ${EMAIL} with the product link. We correct it or take it down.`,
-        "Data refreshes several times a day, so stale data usually corrects itself within hours.",
+        "Each store is read again once or twice a week, so stale data usually corrects itself within a few days.",
       ],
     },
     {

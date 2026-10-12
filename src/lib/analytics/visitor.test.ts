@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyPath, isBot, isTrackablePath, normalizeReferrer, parseUserAgent, readUtm } from "./visitor";
+import { botName, classifyPath, isBot, isTrackablePath, normalizeReferrer, parseUserAgent, readUtm } from "./visitor";
 
 const IPHONE_FB =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [FBAN/FBIOS;FBAV/480.0]";
@@ -74,5 +74,15 @@ describe("readUtm e isTrackablePath", () => {
     expect(isTrackablePath("/admin/trafico")).toBe(false);
     expect(isTrackablePath("/go/eneba")).toBe(false);
     expect(isTrackablePath("https://otro.com")).toBe(false);
+  });
+});
+
+describe("botName", () => {
+  it("nombra a los bots conocidos y cae a un genérico", () => {
+    expect(botName("Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)")).toBe("Googlebot");
+    expect(botName("facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)")).toBe("Facebook / Meta");
+    expect(botName("Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2)")).toBe("OpenAI");
+    expect(botName("Mozilla/5.0 (compatible; RarezaCrawler/1.0)")).toBe("RarezaCrawler");
+    expect(botName("")).toBe("Sin agente");
   });
 });

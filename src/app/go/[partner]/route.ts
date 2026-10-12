@@ -39,9 +39,10 @@ export async function GET(
   }
 
   // El clic con fecha, país y dispositivo, para el reporte de aliados. Los
-  // bots (vistas previas de WhatsApp, rastreadores) no cuentan.
+  // bots (vistas previas de WhatsApp, rastreadores) se guardan marcados y
+  // el reporte los excluye salvo que se pida verlos.
   const visitor = readVisitor(request.headers);
-  if (outbound && visitor) {
+  if (outbound) {
     const { partnerId, offerId } = outbound;
     after(() => recordAffiliateClickEvent(partnerId, offerId, visitor));
   }

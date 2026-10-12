@@ -3,11 +3,14 @@ import { createHmac } from 'node:crypto';
 import { siteConfig } from '@/config/site';
 import { getSupabaseAdmin } from '@/server/db/supabase';
 import {
+  botName,
   classifyPath,
+  clientIp,
   isBot,
   isTrackablePath,
   normalizeReferrer,
   parseUserAgent,
+  readGeo,
   readUtm,
   type DeviceType,
 } from '@/lib/analytics/visitor';
@@ -38,6 +41,9 @@ export interface VisitorContext {
   country: string | null;
   region: string | null;
   city: string | null;
+  /** Rastreador, vista previa de enlaces o script. Se guarda marcado. */
+  isBot: boolean;
+  botName: string | null;
 }
 
 /** La sal: un secreto propio si existe; si no, derivado de CRON_SECRET. */
@@ -51,58 +57,24 @@ function monthKey(now: Date): string {
 }
 
 /**
- * La IP real. En Cloudflare `cf-connecting-ip` es la fuente confiable: la
- * pone Cloudflare y el visitante no la puede falsear, cosa que sí puede con
- * `x-forwarded-for`. Las demás quedan para otros proveedores.
+ * Lo que se puede saber de quien hace la petición: código anónimo,
+ * dispositivo, ubicación aproximada (ver `readGeo`) y si es un bot.
  */
-function clientIp(headers: Headers): string {
-  const cloudflare = headers.get('cf-connecting-ip')?.trim();
-  if (cloudflare) return cloudflare;
-  const forwarded = headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-  return forwarded || headers.get('x-real-ip') || '';
-}
-
-function header(headers: Headers, name: string): string | null {
-  const value = headers.get(name)?.trim();
-  if (!value) return null;
-  try {
-    // Algunos proveedores mandan la ciudad codificada ("San%20Pedro%20Sula").
-    return decodeURIComponent(value).slice(0, 80);
-  } catch {
-    return value.slice(0, 80);
-  }
-}
-
-/**
- * Lo que se puede saber de quien hace la petición, o `null` si es un bot.
- * La ubicación sale de las cabeceras que pone el proveedor, sin consultar a
- * nadie más. En Cloudflare (donde corre el sitio):
- *   - `cf-ipcountry` llega siempre.
- *   - `cf-ipcity`, `cf-region-code` y `cf-region` solo llegan con la regla
- *     administrada "Add visitor location headers" activada en el panel de
- *     Cloudflare (Rules → Settings → Managed Transforms). Sin ella, país sí,
- *     ciudad no.
- * Las de Vercel quedan como alternativa. En local no existe ninguna.
- */
-export function readVisitor(headers: Headers, now: Date = new Date()): VisitorContext | null {
+export function readVisitor(headers: Headers, now: Date = new Date()): VisitorContext {
   const userAgent = headers.get('user-agent') ?? '';
-  if (isBot(userAgent)) return null;
+  const bot = isBot(userAgent);
 
-  const ip = clientIp(headers);
   const visitorHash = createHmac('sha256', `${saltSecret()}:${monthKey(now)}`)
-    .update(`${ip}|${userAgent}`)
+    .update(`${clientIp(headers)}|${userAgent}`)
     .digest('base64url')
     .slice(0, 22);
 
-  const country = header(headers, 'cf-ipcountry') ?? header(headers, 'x-vercel-ip-country');
   return {
     visitorHash,
     ...parseUserAgent(userAgent),
-    // Cloudflare usa "XX" para desconocido y "T1" para Tor: ninguno es un país.
-    country: country && /^[A-Z]{2}$/.test(country) && country !== 'XX' ? country : null,
-    region:
-      header(headers, 'cf-region-code') ?? header(headers, 'cf-region') ?? header(headers, 'x-vercel-ip-country-region'),
-    city: header(headers, 'cf-ipcity') ?? header(headers, 'x-vercel-ip-city'),
+    ...readGeo(headers),
+    isBot: bot,
+    botName: bot ? botName(userAgent) : null,
   };
 }
 
@@ -151,6 +123,9 @@ export async function recordPageView(payload: PageViewPayload, visitor: VisitorC
     screen_width: payload.screenWidth,
     visitor_hash: visitor.visitorHash,
     session_id: payload.sessionId,
+    // Solo cuando es un bot: así las visitas de personas se siguen guardando
+    // aunque la migración 0050 todavía no esté aplicada.
+    ...(visitor.isBot ? { is_bot: true, bot_name: visitor.botName } : {}),
   });
   // Una visita perdida no le importa a nadie; un error en la consola sí avisa
   // si falta la migración.
@@ -169,6 +144,7 @@ export async function recordAffiliateClickEvent(
     country: visitor.country,
     device: visitor.device,
     visitor_hash: visitor.visitorHash,
+    ...(visitor.isBot ? { is_bot: true, bot_name: visitor.botName } : {}),
   });
   if (error) console.warn('[analytics] no se pudo registrar el clic:', error.message);
 }
@@ -217,13 +193,17 @@ export interface AnalyticsReport {
   /** [día ISO 1=lunes, hora 0-23, vistas] */
   heatmap: [number, number, number][];
   partnerClicks: Breakdown[];
+  /** Vistas de bots en el rango, se incluyan o no en el resto. */
+  botViews: number;
+  /** Qué bots, por nombre (solo vistas). */
+  bots: Breakdown[];
 }
 
 const EMPTY_TOTALS: Totals = { views: 0, visitors: 0, sessions: 0, mobile: 0, honduras: 0, visitorDays: 0 };
 
 function explain(error: { code?: string; message: string }): string {
   if (error.code === '42883' || error.code === 'PGRST202' || error.code === '42P01' || error.code === 'PGRST205') {
-    return 'Faltan las tablas de estadísticas: corré la migración 0048_analytics.sql en Supabase.';
+    return 'Faltan las funciones de estadísticas: corré las migraciones 0048_analytics.sql y 0050_analytics_bots.sql en Supabase.';
   }
   return error.message;
 }
@@ -240,12 +220,21 @@ function toTotals(value: unknown): Totals {
   };
 }
 
-export async function getAnalyticsReport(from: Date, to: Date, bucket: Bucket, limit = 12): Promise<AnalyticsReport> {
+export async function getAnalyticsReport(
+  from: Date,
+  to: Date,
+  bucket: Bucket,
+  limit = 12,
+  includeBots = false,
+): Promise<AnalyticsReport> {
   const { data, error } = await getSupabaseAdmin().rpc('analytics_report', {
     p_from: from.toISOString(),
     p_to: to.toISOString(),
     p_bucket: bucket,
     p_limit: limit,
+    // Solo se manda cuando se piden: así, sin la migración 0050, el panel
+    // sigue andando con la función de 0048 (que excluye bots igual).
+    ...(includeBots ? { p_include_bots: true } : {}),
   });
   if (error) throw new Error(explain(error));
 
@@ -275,13 +264,16 @@ export async function getAnalyticsReport(from: Date, to: Date, bucket: Bucket, l
     locales: list('locales'),
     heatmap: (raw.heatmap ?? []) as [number, number, number][],
     partnerClicks: list('partnerClicks'),
+    botViews: Number(raw.botViews ?? 0),
+    bots: list('bots'),
   };
 }
 
-export async function getAnalyticsTotals(from: Date, to: Date): Promise<Totals> {
+export async function getAnalyticsTotals(from: Date, to: Date, includeBots = false): Promise<Totals> {
   const { data, error } = await getSupabaseAdmin().rpc('analytics_totals', {
     p_from: from.toISOString(),
     p_to: to.toISOString(),
+    ...(includeBots ? { p_include_bots: true } : {}),
   });
   if (error) return EMPTY_TOTALS;
   return toTotals(data);
@@ -290,11 +282,10 @@ export async function getAnalyticsTotals(from: Date, to: Date): Promise<Totals> 
 /** Visitantes distintos en los últimos 30 minutos: "ahora en el sitio". */
 export async function getLiveVisitors(): Promise<number> {
   const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const { data, error } = await getSupabaseAdmin()
-    .from('page_views')
-    .select('visitor_hash')
-    .gte('created_at', since)
-    .limit(5000);
+  const query = () => getSupabaseAdmin().from('page_views').select('visitor_hash').gte('created_at', since).limit(5000);
+  // Solo personas. Sin la 0050 no existe `is_bot` (ni hay bots guardados).
+  let { data, error } = await query().eq('is_bot', false);
+  if (error) ({ data, error } = await query());
   if (error) return 0;
   return new Set((data ?? []).map((row) => String(row.visitor_hash))).size;
 }
