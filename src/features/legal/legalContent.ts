@@ -38,7 +38,7 @@ export interface LegalDoc {
  * componente la formatea según el idioma, para que no haya un "9/9/2026" que
  * signifique cosas distintas a cada lado.
  */
-export const POLICIES_UPDATED = "2026-09-09";
+export const POLICIES_UPDATED = "2026-10-12";
 
 const EMAIL = siteConfig.contactEmail;
 const BOT = siteConfig.botUserAgent;
@@ -69,7 +69,7 @@ const termsEs: LegalDoc = {
       heading: "3. Cómo se ordena lo que ves",
       paragraphs: [
         "El orden de los resultados lo determinan tu búsqueda, tus filtros y el criterio de orden que elijas. Ninguna tienda paga por aparecer, por aparecer antes, ni por aparecer con mejor calificación.",
-        "El sitio muestra publicidad de terceros para cubrir sus costos. Esa publicidad está identificada como tal y no altera los resultados del comparador.",
+        "El sitio se sostiene con patrocinios y con un programa de afiliados, que vive aparte del comparador, en la sección Aliados. Nada de eso altera los resultados ni el orden del comparador.",
       ],
     },
     {
@@ -86,6 +86,7 @@ const termsEs: LegalDoc = {
       heading: "5. Enlaces a sitios de terceros",
       paragraphs: [
         "Los productos enlazan a las tiendas de origen. Lo que pase en esos sitios —precios, stock, condiciones de compra, envíos, devoluciones, garantías y tratamiento de tus datos— se rige por los términos de cada tienda, no por estos.",
+        "Los enlaces de la sección Aliados son enlaces de afiliado: si comprás por ellos, el aliado nos paga una comisión, sin costo extra para vos. Los códigos promocionales los define y los honra cada aliado; nosotros solo los publicamos y no respondemos si un aliado los cambia o los retira.",
       ],
     },
     {
@@ -139,11 +140,11 @@ const privacyEs: LegalDoc = {
       ],
     },
     {
-      heading: "3. Publicidad de terceros",
+      heading: "3. Enlaces de afiliado",
       paragraphs: [
-        "El sitio muestra anuncios de Google AdSense. Google y sus socios pueden usar cookies o identificadores para mostrar anuncios en función de tus visitas a este y a otros sitios.",
-        "Podés desactivar la publicidad personalizada en la configuración de anuncios de Google (adssettings.google.com) o bloquear las cookies desde tu navegador. El sitio sigue funcionando igual.",
-        "El uso que Google hace de esos datos se rige por sus propias políticas, no por esta.",
+        "El sitio no muestra publicidad. Lo que sí tiene son enlaces de afiliado en la sección Aliados.",
+        "Cuando tocás uno, pasás un instante por nuestro servidor, que suma uno a un contador de clics de ese aliado —solo el número, sin nada que te identifique— y te manda al aliado.",
+        "Ya en el sitio del aliado, él puede usar cookies o parámetros en el enlace para saber que llegaste desde acá y pagarnos la comisión. Ese uso se rige por la política de privacidad del aliado, no por esta.",
       ],
     },
     {
@@ -191,7 +192,8 @@ const contentEs: LegalDoc = {
       heading: "3. Marcas, nombres e imágenes",
       paragraphs: [
         "Las marcas comerciales, nombres, logotipos e imágenes de producto pertenecen a sus respectivos titulares. Aparecen únicamente para identificar el producto o la tienda de la que proviene el precio: es un uso nominativo y descriptivo.",
-        "Su aparición en este sitio no implica afiliación, patrocinio, aval ni relación comercial alguna con Find Your Prices, ni en un sentido ni en el otro.",
+        "Su aparición en el comparador no implica afiliación, patrocinio, aval ni relación comercial alguna con Find Your Prices, ni en un sentido ni en el otro.",
+        "La excepción son los aliados de la sección Aliados: con ellos sí hay un acuerdo comercial (programa de afiliados), se identifican como tales y no forman parte de los resultados del comparador.",
       ],
     },
     {
@@ -256,7 +258,7 @@ const termsEn: LegalDoc = {
       heading: "3. How results are ordered",
       paragraphs: [
         "Result order is determined by your search, your filters and the sort option you pick. No store pays to appear, to appear first, or to appear better rated.",
-        "The site shows third-party advertising to cover its costs. That advertising is labelled as such and does not alter comparison results.",
+        "The site is paid for by sponsorships and by an affiliate programme that lives apart from the comparator, in the Partners section. None of it alters comparison results or their order.",
       ],
     },
     {
@@ -273,6 +275,7 @@ const termsEn: LegalDoc = {
       heading: "5. Links to third-party sites",
       paragraphs: [
         "Products link out to their source stores. Whatever happens on those sites — prices, stock, purchase conditions, shipping, returns, warranties and the handling of your data — is governed by each store's own terms, not by these.",
+        "Links in the Partners section are affiliate links: if you buy through them, the partner pays us a commission, at no extra cost to you. Promo codes are set and honoured by each partner; we only publish them and are not liable if a partner changes or withdraws them.",
       ],
     },
     {
@@ -326,11 +329,11 @@ const privacyEn: LegalDoc = {
       ],
     },
     {
-      heading: "3. Third-party advertising",
+      heading: "3. Affiliate links",
       paragraphs: [
-        "The site shows Google AdSense ads. Google and its partners may use cookies or identifiers to serve ads based on your visits to this and other sites.",
-        "You can turn off personalised advertising in Google's ad settings (adssettings.google.com) or block cookies in your browser. The site works the same either way.",
-        "Google's use of that data is governed by its own policies, not by this one.",
+        "The site shows no advertising. What it does have are affiliate links in the Partners section.",
+        "When you tap one, you pass through our server for an instant; it adds one to that partner's click counter — just the number, nothing that identifies you — and sends you on to the partner.",
+        "Once on the partner's site, the partner may use cookies or link parameters to know you came from here and pay us the commission. That use is governed by the partner's privacy policy, not by this one.",
       ],
     },
     {
@@ -378,7 +381,8 @@ const contentEn: LegalDoc = {
       heading: "3. Trademarks, names and images",
       paragraphs: [
         "Trademarks, names, logos and product images belong to their respective owners. They appear solely to identify the product or the store a price came from: a nominative, descriptive use.",
-        "Their appearance on this site implies no affiliation, sponsorship, endorsement or commercial relationship with Find Your Prices, in either direction.",
+        "Their appearance in the comparator implies no affiliation, sponsorship, endorsement or commercial relationship with Find Your Prices, in either direction.",
+        "The exception is the partners in the Partners section: with them there is a commercial agreement (an affiliate programme), they are labelled as such, and they are not part of comparison results.",
       ],
     },
     {

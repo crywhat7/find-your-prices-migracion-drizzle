@@ -19,22 +19,18 @@ import type { Locale } from "@/features/i18n/translate";
 
 export { OG_CONTENT_TYPE, OG_SIZE, ogAlt } from "./ogMeta";
 import { OG_SIZE } from "./ogMeta";
+import { BRAND_MARK_DARK, BRAND_MARK_SIZE } from "./brandMark";
 
 /**
- * El mismo mark de `app/icon.svg`, como data URI.
+ * El isotipo, en su variante clara (la tarjeta es oscura), como data URI.
  *
- * Va embebido y no como `<img src="/icon.svg">` porque la imagen se genera en
+ * Va embebido y no como `<img src="/brand/...">` porque la imagen se genera en
  * el servidor, a veces en el build, cuando todavía no hay un origen al que
- * pedirle el archivo. Una URL relativa acá se resuelve a nada.
+ * pedirle el archivo. Una URL relativa acá se resuelve a nada. Lo genera
+ * `scripts/generate-brand-assets.mjs`.
  */
-const MARK = `data:image/svg+xml;utf8,${encodeURIComponent(
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="128" height="128">
-    <rect width="32" height="32" rx="7" fill="#0f0f13"/>
-    <circle cx="14" cy="13.4" r="6.1" fill="none" stroke="#2997ff" stroke-width="2.9"/>
-    <path d="M18.6 18.1 L24.4 23.9" fill="none" stroke="#2997ff" stroke-width="3.6" stroke-linecap="round"/>
-    <path d="M14 9.6 V15.4 M11.4 12.9 L14 15.6 L16.6 12.9" fill="none" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`,
-)}`;
+const MARK_HEIGHT = 96;
+const MARK_WIDTH = Math.round((MARK_HEIGHT * BRAND_MARK_SIZE.width) / BRAND_MARK_SIZE.height);
 
 /**
  * Construye la tarjeta.
@@ -68,7 +64,7 @@ export function renderBrandOgImage(locale: Locale): ImageResponse {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={MARK} width={104} height={104} alt="" />
+          <img src={BRAND_MARK_DARK} width={MARK_WIDTH} height={MARK_HEIGHT} alt="" />
           <div
             style={{
               display: "flex",

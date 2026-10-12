@@ -43,7 +43,7 @@ const es: AboutContent = {
   credit: {
     lead: "Somos dos,",
     join: " y ",
-    tail: ", metiéndole a esto fuera de horas. No hay empresa detrás ni inversionistas: el sitio se paga con los anuncios que ves, y hasta ahí llega.",
+    tail: ", metiéndole a esto fuera de horas. No hay empresa detrás ni inversionistas: el sitio se sostiene con patrocinios y con los aliados de la sección Aliados, y hasta ahí llega.",
   },
 
   sourcing: {
@@ -58,9 +58,9 @@ const es: AboutContent = {
     heading: "Lo que no somos",
     items: [
       "No vendemos nada. No hay carrito, no hay pagos, no tocamos tu tarjeta.",
-      "No cobramos comisión a las tiendas ni nos pagan por aparecer más arriba. El orden lo deciden tus filtros, no la publicidad.",
+      "Las tiendas del comparador no nos pagan nada, ni por aparecer ni por salir más arriba. El orden lo deciden tus filtros.",
       "No somos la tienda. Los precios son referenciales y pueden cambiar; el que manda es el de la tienda al momento de comprar.",
-      "No tenemos afiliación con ninguna de las tiendas que aparecen acá.",
+      "No tenemos relación comercial con las tiendas del comparador. Los aliados son otra cosa y van aparte, en su propia sección: si comprás por sus enlaces nos pagan una comisión, y eso está dicho ahí mismo.",
     ],
     policiesNote:
       "Si querés el detalle largo —de dónde salen los datos, qué guardamos y cómo pedir que retiremos algo—, está todo escrito:",
@@ -89,7 +89,7 @@ const en: AboutContent = {
   credit: {
     lead: "There are two of us,",
     join: " and ",
-    tail: ", working on this after hours. No company behind it and no investors: the site is paid for by the ads you see, and that is the whole of it.",
+    tail: ", working on this after hours. No company behind it and no investors: the site is paid for by sponsorships and by the partners in the Partners section, and that is the whole of it.",
   },
 
   sourcing: {
@@ -104,9 +104,9 @@ const en: AboutContent = {
     heading: "What we are not",
     items: [
       "We sell nothing. No cart, no payments, we never touch your card.",
-      "Stores pay us no commission and cannot pay to rank higher. Your filters decide the order, not advertising.",
+      "The stores in the comparator pay us nothing, not to appear and not to rank higher. Your filters decide the order.",
       "We are not the store. Prices are indicative and can change; the one that counts is the store's price at checkout.",
-      "We have no affiliation with any of the stores listed here.",
+      "We have no commercial relationship with the stores in the comparator. Partners are a different thing and live apart, in their own section: if you buy through their links they pay us a commission, and that is stated right there.",
     ],
     policiesNote:
       "If you want the long version — where the data comes from, what we keep, and how to ask us to remove something — it is all written down:",

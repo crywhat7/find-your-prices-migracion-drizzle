@@ -6,13 +6,13 @@ import { useLocale } from "@/features/i18n/LocaleContext";
 import { routeFor } from "@/features/i18n/routes";
 import type { Locale } from "@/features/i18n/translate";
 
-const LABELS: Record<Locale, { menu: string; close: string; categories: string; stores: string }> = {
-  es: { menu: "Menú", close: "Cerrar menú", categories: "Categorías", stores: "Tiendas" },
-  en: { menu: "Menu", close: "Close menu", categories: "Categories", stores: "Stores" },
+const LABELS: Record<Locale, { menu: string; close: string; categories: string; stores: string; partners: string }> = {
+  es: { menu: "Menú", close: "Cerrar menú", categories: "Categorías", stores: "Tiendas", partners: "Aliados" },
+  en: { menu: "Menu", close: "Close menu", categories: "Categories", stores: "Stores", partners: "Partners" },
 };
 
 /**
- * Menú hamburguesa de teléfono y tableta: categorías y tiendas.
+ * Menú hamburguesa de teléfono y tableta: categorías, tiendas y aliados.
  *
  * En escritorio esas dos puertas van sueltas en la barra; en pantallas chicas
  * competían con el buscador y con favoritos por los mismos 360px, y el
@@ -94,6 +94,12 @@ export function MobileMenu() {
             <path d="M3.5 9.5a2.8 2.8 0 0 0 5.6 0 2.8 2.8 0 0 0 5.8 0 2.8 2.8 0 0 0 5.6 0" />
             <path d="M5 12.5v7h14v-7" />
             <path d="M10 19.5v-4.5h4v4.5" />
+          </MenuLink>
+          <MenuLink href={routeFor("partners", locale)} label={labels.partners} onNavigate={() => setOpen(false)}>
+            <rect x="3.5" y="8.5" width="17" height="4" rx="1" />
+            <path d="M5 12.5v7h14v-7" />
+            <path d="M12 8.5v11" />
+            <path d="M12 8.5S10.8 4.5 8.4 4.5a2 2 0 0 0 0 4H12Zm0 0s1.2-4 3.6-4a2 2 0 0 1 0 4H12Z" />
           </MenuLink>
         </div>
       )}

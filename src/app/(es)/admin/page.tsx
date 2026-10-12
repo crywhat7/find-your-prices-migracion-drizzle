@@ -41,6 +41,11 @@ const TOOLS: Tool[] = [
     title: 'Tiendas',
     description: 'Logo y texto alternativo de cada tienda, para el índice y sus landings.',
   },
+  {
+    href: '/admin/aliados',
+    title: 'Aliados',
+    description: 'El programa de afiliados: enlace de afiliado, código promocional, productos destacados y clics.',
+  },
 ];
 
 interface PageProps {

@@ -66,8 +66,12 @@ producto hace.
   revalidación (300 s el listado, 600 s la ficha).
 - **Panel interno:** `/admin/scraping` administra tiendas, objetivos y corridas.
   Es herramienta de operación, no parte del producto que ve el visitante.
-- **Sostenimiento:** el sitio muestra publicidad de Google AdSense. No hay
-  comisiones de tiendas ni posiciones pagadas.
+- **Sostenimiento:** patrocinios y un programa de afiliados (octubre 2026; el
+  primer interesado es Eneba). Los anuncios se quitaron. Los aliados viven en
+  su propia sección (`/aliados`, `/en/partners`), con su código promocional y
+  productos destacados cargados a mano desde `/admin/aliados`; las salidas
+  pasan por `/go/<aliado>`, que cuenta el clic. Las tiendas del comparador no
+  pagan nada y no hay posiciones pagadas.
 
 ## Capabilities and Constraints
 
@@ -86,6 +90,9 @@ producto hace.
 - Tema claro/oscuro y preferencias de vista persistidas.
 - Páginas de contexto y políticas: acerca de, términos, privacidad y uso de
   contenido, en los dos idiomas.
+- Sección de aliados: índice y página por aliado, con código promocional
+  copiable, ofertas destacadas en la moneda del aliado y declaración de
+  afiliado visible arriba.
 
 **Restricciones técnicas confirmadas**
 
@@ -126,7 +133,8 @@ producto hace.
   Decir lo que el producto no es tiene tanto valor como decir lo que es.
 - **Autoría:** lo hicieron dos personas, acreditadas por su apodo de GitHub
   dentro del texto de "Acerca de": **crywhat7** (github.com/crywhat7) y
-  **fq962** (github.com/fq962). Sin empresa, sin inversionistas, sin comisiones.
+  **fq962** (github.com/fq962). Sin empresa y sin inversionistas. Las únicas
+  comisiones son las de los aliados, declaradas en su sección.
 - **Compromiso público con las tiendas:** la política de uso de contenido
   publicada promete retiro a pedido en 5 días hábiles, sin exigir reclamo legal.
   Está en vigor porque está publicada. (No fue marcada como innegociable en la
@@ -155,8 +163,11 @@ producto hace.
 1. **La cobertura manda.** Una tienda que falta hace más daño que cualquier
    detalle de interfaz. Cuando haya que elegir entre sumar una tienda y pulir
    una pantalla, se suma la tienda.
-2. **El comparador señala, no vende.** Nunca carrito, nunca pagos, nunca
-   comisión. El recorrido termina en la tienda, y eso es un éxito, no una fuga.
+2. **El comparador señala, no vende.** Nunca carrito, nunca pagos. El recorrido
+   termina en la tienda, y eso es un éxito, no una fuga. Las comisiones de
+   afiliado viven aparte, en Aliados, siempre declaradas: nunca entran a los
+   resultados del comparador ni cambian su orden, y una tienda no puede pagar
+   por aparecer ni por subir.
 3. **Sin fricción y sin peaje.** Gratis, sin cuenta, sin registro para comparar.
    Cualquier función nueva que pida datos tiene que justificar por qué no puede
    funcionar sin ellos.

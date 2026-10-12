@@ -15,6 +15,9 @@ import { SITEMAP_INDEX_PATH } from "@/lib/seo/sitemaps";
  *   resultados si alguien la enlaza desde fuera.
  * - `/api` son endpoints JSON. Rastrearlos gasta presupuesto de rastreo en
  *   respuestas que ninguna persona va a leer.
+ * - `/go/` son las salidas a los aliados (enlaces de afiliado). Un rastreador
+ *   que las siga infla el contador de clics y no gana nada: es una
+ *   redirección a otro sitio.
  *
  * Todo lo demás se abre a propósito, incluidas las decenas de miles de fichas
  * de producto: son el motivo por el que este sitio existe en la búsqueda.
@@ -31,7 +34,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/admin", "/api/"],
+        disallow: ["/admin", "/api/", "/go/"],
       },
     ],
     sitemap: absoluteUrl(SITEMAP_INDEX_PATH),

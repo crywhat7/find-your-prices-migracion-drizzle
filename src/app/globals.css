@@ -564,3 +564,80 @@ select option {
     filter: none !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Marca — isotipo y logo
+ * ---------------------------------------------------------------------------
+ * Fondo con `image-set` y no `<img>`: el logo cambia con el tema (la tinta de
+ * "YP" es casi negra y en el tema oscuro se pinta clara), y así el navegador
+ * baja UNA sola imagen —la del tema activo y la densidad de la pantalla— en
+ * vez de las dos variantes con una escondida. El nombre accesible lo pone
+ * quien lo usa (`aria-label` en el enlace o `role="img"`).
+ *
+ * Los archivos salen de `scripts/generate-brand-assets.mjs`. La relación de
+ * aspecto va acá para que la caja tenga su tamaño antes de que llegue la
+ * imagen: sin saltos de diseño.
+ * ------------------------------------------------------------------------ */
+.brand-isotipo,
+.brand-logo {
+  display: block;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
+.brand-isotipo {
+  aspect-ratio: 950 / 451;
+  background-image: url("/brand/fyp-isotipo-96.webp");
+  background-image: image-set(
+    url("/brand/fyp-isotipo-96.webp") 1x,
+    url("/brand/fyp-isotipo-192.webp") 2x,
+    url("/brand/fyp-isotipo-288.webp") 3x
+  );
+}
+
+[data-theme="dark"] .brand-isotipo {
+  background-image: url("/brand/fyp-isotipo-dark-96.webp");
+  background-image: image-set(
+    url("/brand/fyp-isotipo-dark-96.webp") 1x,
+    url("/brand/fyp-isotipo-dark-192.webp") 2x,
+    url("/brand/fyp-isotipo-dark-288.webp") 3x
+  );
+}
+
+.brand-logo {
+  aspect-ratio: 951 / 552;
+  background-image: url("/brand/fyp-logo-240.webp");
+  background-image: image-set(
+    url("/brand/fyp-logo-240.webp") 1x,
+    url("/brand/fyp-logo-480.webp") 2x,
+    url("/brand/fyp-logo-720.webp") 3x
+  );
+}
+
+[data-theme="dark"] .brand-logo {
+  background-image: url("/brand/fyp-logo-dark-240.webp");
+  background-image: image-set(
+    url("/brand/fyp-logo-dark-240.webp") 1x,
+    url("/brand/fyp-logo-dark-480.webp") 2x,
+    url("/brand/fyp-logo-dark-720.webp") 3x
+  );
+}
+
+/* En papel no hay fondos (los navegadores no imprimen imágenes de fondo por
+   defecto) y el tema se fuerza claro: se pide que el logo sí salga. */
+@media print {
+  .brand-isotipo,
+  .brand-logo {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  [data-theme="dark"] .brand-isotipo {
+    background-image: url("/brand/fyp-isotipo-192.webp");
+  }
+
+  [data-theme="dark"] .brand-logo {
+    background-image: url("/brand/fyp-logo-480.webp");
+  }
+}

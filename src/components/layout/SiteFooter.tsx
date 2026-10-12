@@ -16,13 +16,14 @@ import type { Locale } from "@/features/i18n/translate";
  * ofrece: una tienda que no encuentra a quién escribirle no escribe, reclama.
  */
 
-const FOOTER_PAGES: SitePage[] = ["home", "categories", "stores", "favorites", "quote", "about", "terms", "privacy", "content"];
+const FOOTER_PAGES: SitePage[] = ["home", "categories", "stores", "partners", "favorites", "quote", "about", "terms", "privacy", "content"];
 
 const LABELS: Record<Locale, Record<SitePage, string>> = {
   es: {
     home: "Comparador",
     categories: "Categorías",
     stores: "Tiendas",
+    partners: "Aliados y códigos",
     favorites: "Favoritos",
     quote: "Cotización",
     about: "Acerca de",
@@ -34,6 +35,7 @@ const LABELS: Record<Locale, Record<SitePage, string>> = {
     home: "Comparator",
     categories: "Categories",
     stores: "Stores",
+    partners: "Partners and codes",
     favorites: "Favorites",
     quote: "Quote",
     about: "About",
@@ -55,9 +57,8 @@ export function SiteFooter() {
     <footer className="mt-24 print:hidden border-t border-[var(--border)]">
       <div className={`${SHELL} flex flex-col gap-8 py-10 sm:flex-row sm:justify-between sm:gap-12`}>
         <div className="flex flex-col gap-1">
-          <p className="text-[0.9375rem] font-medium tracking-[-0.01em] text-[var(--text)]">
-            {siteConfig.name}
-          </p>
+          {/* El logo completo, con el nombre escrito: acá hay lugar para él. */}
+          <span role="img" aria-label={siteConfig.name} className="brand-logo mb-3 h-[88px] self-start" />
           <p className="max-w-[34ch] text-[0.8125rem] leading-[1.5] text-[var(--text-tertiary)]">
             {TAGLINE[locale]}
           </p>

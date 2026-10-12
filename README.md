@@ -238,7 +238,7 @@ src/lib/seo/
 src/server/services/sitemap.ts   # Lectura ligera del catálogo para los sitemaps
 src/app/robots.ts                # robots.txt
 src/app/manifest.ts              # manifest.webmanifest
-scripts/generate-icons.mjs       # Regenera favicon.ico y apple-icon.png
+scripts/generate-brand-assets.mjs  # Logo, favicon, íconos PWA y mark de la tarjeta OG
 ```
 
 ### Qué emite cada página
@@ -282,18 +282,30 @@ chequeo del scraper, no la del despliegue.
 `app/sitemap.ts` (la convención de Next) **no** se usa: sólo sabe emitir
 `<urlset>` y lo que hace falta en la raíz es un `<sitemapindex>`.
 
-### Iconos
+### Logo e iconos
 
-El mark —una lupa con una flecha de bajada de precio— vive en
-`src/app/icon.svg`. Los rásteres (`favicon.ico` con 16/32/48 px y
-`apple-icon.png` de 180 px) se generan desde la misma geometría:
+Los originales están en `public/icons/`: `FYP_Isotipo.png` (FYP con la
+etiqueta, fondo transparente) y `FYP_Logo.png` (con "Find Your Prices", sobre
+blanco). Todo lo demás se genera desde ellos:
 
 ```bash
-node scripts/generate-icons.mjs src/app
+node scripts/generate-brand-assets.mjs
 ```
 
-Si se edita el SVG, hay que editar también las coordenadas del script y volver
-a correrlo, o el icono de la pestaña dejará de coincidir con el del escritorio.
+| Salida | Uso |
+|---|---|
+| `public/brand/fyp-isotipo[-dark]-{96,192,288}.webp` | Barra de navegación, 1x/2x/3x. `-dark` pinta la tinta clara para el tema oscuro. |
+| `public/brand/fyp-logo[-dark]-{240,480,720}.webp` | Pie de página. Fondo blanco quitado ("color a alfa"). |
+| `public/brand/fyp-logo-512.png` | Logo de la `Organization` en el JSON-LD. |
+| `public/brand/icon-{192,512}.png`, `icon-maskable-512.png` | Manifest (instalar en Android). |
+| `src/app/favicon.ico` (16/32/48), `icon.png`, `apple-icon.png` | Pestaña, Google y pantalla de inicio de iOS. |
+| `src/lib/seo/brandMark.ts` | Isotipo en data URI para la tarjeta OG (satori no lee `/public`). |
+
+En la interfaz se pintan con las clases `.brand-isotipo` y `.brand-logo` de
+`globals.css`: fondo con `image-set`, así se descarga solo la variante del
+tema activo y la densidad de la pantalla. Si cambia un original, se vuelve a
+correr el script y se commitean las salidas; en producción no se procesa
+ninguna imagen.
 
 ### Configuración por entorno
 

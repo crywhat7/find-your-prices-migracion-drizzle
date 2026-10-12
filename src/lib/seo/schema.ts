@@ -54,10 +54,14 @@ export function organizationJsonLd(locale: Locale): JsonLdNode {
     url: siteConfig.url,
     description: SITE_DESCRIPTION[locale],
     email: siteConfig.contactEmail,
+    // PNG cuadrado sobre blanco: Google no toma SVG como logo de la entidad
+    // y pide al menos 112×112. Sale de scripts/generate-brand-assets.mjs.
     logo: compact({
       "@type": "ImageObject",
-      url: absoluteUrl("/icon.svg"),
-      contentUrl: absoluteUrl("/icon.svg"),
+      url: absoluteUrl("/brand/fyp-logo-512.png"),
+      contentUrl: absoluteUrl("/brand/fyp-logo-512.png"),
+      width: 512,
+      height: 512,
       caption: siteConfig.name,
     }),
     areaServed: {

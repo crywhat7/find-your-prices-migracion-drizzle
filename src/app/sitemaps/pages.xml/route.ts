@@ -32,6 +32,7 @@ const PAGE_HINTS: Record<PublicPage, { changefreq: ChangeFrequency; priority: nu
   home: { changefreq: "hourly", priority: 1 },
   categories: { changefreq: "daily", priority: 0.9 },
   stores: { changefreq: "daily", priority: 0.9 },
+  partners: { changefreq: "weekly", priority: 0.5 },
   about: { changefreq: "monthly", priority: 0.6 },
   terms: { changefreq: "yearly", priority: 0.3 },
   privacy: { changefreq: "yearly", priority: 0.3 },

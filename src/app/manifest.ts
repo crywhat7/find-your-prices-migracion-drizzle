@@ -27,22 +27,28 @@ export default function manifest(): MetadataRoute.Manifest {
     // tema oscuro de globals.css, que es el tema por defecto del sitio.
     background_color: "#08080a",
     theme_color: "#08080a",
+    // El isotipo en placa blanca (ver scripts/generate-brand-assets.mjs).
+    // 192 y 512 son los dos tamaños que Chrome exige para ofrecer "instalar";
+    // el `maskable` deja aire para que Android lo recorte en círculo o en
+    // gota sin comerse las letras.
     icons: [
       {
-        src: "/icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
+        src: "/brand/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
         purpose: "any",
       },
       {
-        src: "/favicon.ico",
-        sizes: "32x32",
-        type: "image/x-icon",
+        src: "/brand/icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
       },
       {
-        src: "/apple-icon",
-        sizes: "180x180",
+        src: "/brand/icon-maskable-512.png",
+        sizes: "512x512",
         type: "image/png",
+        purpose: "maskable",
       },
     ],
   };

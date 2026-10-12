@@ -28,6 +28,11 @@ const STORES_LABEL: Record<string, string> = {
   es: "Tiendas",
 };
 
+const PARTNERS_LABEL: Record<string, string> = {
+  en: "Partners",
+  es: "Aliados",
+};
+
 const FAVORITES_LABEL: Record<string, string> = {
   en: "Favorites",
   es: "Favoritos",
@@ -72,25 +77,18 @@ export function SiteNav({ localePaths }: SiteNavProps = {}) {
     >
       <div className={`${SHELL} flex h-full items-center gap-3 sm:gap-4`}>
         {/* El logo lleva al catálogo. Desde que existen páginas que no son la
-            portada, era la única salida de vuelta y no estaba. */}
+            portada, era la única salida de vuelta y no estaba. Es el isotipo
+            (ver `.brand-isotipo` en globals.css): más bajo en teléfono, donde
+            cada píxel de ancho se lo quita al buscador. */}
         <Link
           href={routeFor("home", locale)}
           aria-label={HOME_LABEL[locale] ?? HOME_LABEL.en}
-          className="-m-2 shrink-0 rounded-full p-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          className="group -m-1.5 shrink-0 rounded-lg p-1.5 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         >
-          <svg
+          <span
             aria-hidden="true"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-[22px] w-[22px] text-[var(--text)] transition-transform duration-[var(--dur-slow)] ease-[var(--ease-spring)] hover:rotate-[-8deg]"
-          >
-            <path d="M12.6 3H5.4A2.4 2.4 0 0 0 3 5.4v7.2c0 .64.25 1.25.7 1.7l6.7 6.7a2.4 2.4 0 0 0 3.4 0l6.2-6.2a2.4 2.4 0 0 0 0-3.4l-6.7-6.7a2.4 2.4 0 0 0-1.7-.7Z" />
-            <circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none" />
-          </svg>
+            className="brand-isotipo h-[22px] transition-transform duration-[var(--dur-slow)] ease-[var(--ease-spring)] group-hover:scale-[1.06] sm:h-[26px]"
+          />
         </Link>
 
         {/* El buscador va en la barra y no en la página: es la acción
@@ -102,10 +100,10 @@ export function SiteNav({ localePaths }: SiteNavProps = {}) {
           <SiteSearch />
         </div>
 
-        {/* Las tres puertas del sitio después del buscador: categorías,
-            tiendas y favoritos. Un rastreador tiene que encontrar las dos
-            primeras desde cualquier página. Por debajo de `lg` categorías y
-            tiendas se pliegan en el menú hamburguesa (los enlaces siguen en
+        {/* Las puertas del sitio después del buscador: categorías, tiendas,
+            aliados y favoritos. Un rastreador tiene que encontrar las dos
+            primeras desde cualquier página. Por debajo de `lg` categorías,
+            tiendas y aliados se pliegan en el menú hamburguesa (los enlaces siguen en
             el pie para los rastreadores) y la barra queda con favoritos,
             preferencias y menú, en ese orden. Idioma y tema van plegados en el último botón. */}
         <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
@@ -125,6 +123,14 @@ export function SiteNav({ localePaths }: SiteNavProps = {}) {
             <path d="M3.5 9.5a2.8 2.8 0 0 0 5.6 0 2.8 2.8 0 0 0 5.8 0 2.8 2.8 0 0 0 5.6 0" />
             <path d="M5 12.5v7h14v-7" />
             <path d="M10 19.5v-4.5h4v4.5" />
+          </NavLink>
+
+          <NavLink href={routeFor("partners", locale)} label={PARTNERS_LABEL[locale] ?? PARTNERS_LABEL.en}>
+            {/* Un regalo: los aliados traen su código de descuento. */}
+            <rect x="3.5" y="8.5" width="17" height="4" rx="1" />
+            <path d="M5 12.5v7h14v-7" />
+            <path d="M12 8.5v11" />
+            <path d="M12 8.5S10.8 4.5 8.4 4.5a2 2 0 0 0 0 4H12Zm0 0s1.2-4 3.6-4a2 2 0 0 1 0 4H12Z" />
           </NavLink>
 
           {/* El corazón es la puerta a "Mis favoritos" y a la vez el contador:

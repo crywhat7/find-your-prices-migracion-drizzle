@@ -15,6 +15,7 @@ export type SitePage =
   | "home"
   | "categories"
   | "stores"
+  | "partners"
   | "favorites"
   | "quote"
   | "about"
@@ -33,6 +34,7 @@ export const SITE_ROUTES: Record<SitePage, Record<Locale, string>> = {
   home: { es: "/", en: "/en" },
   categories: { es: "/categorias", en: "/en/categories" },
   stores: { es: "/tiendas", en: "/en/stores" },
+  partners: { es: "/aliados", en: "/en/partners" },
   favorites: { es: "/favoritos", en: "/en/favorites" },
   quote: { es: "/cotizacion", en: "/en/quote" },
   about: { es: "/acerca", en: "/en/about" },
