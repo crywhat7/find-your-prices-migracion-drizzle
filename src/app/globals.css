@@ -641,3 +641,48 @@ select option {
     background-image: url("/brand/fyp-logo-480.webp");
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Gráficos del panel de tráfico
+ * ---------------------------------------------------------------------------
+ * Dos series categóricas (azul = visitantes, naranja = vistas) y una rampa
+ * secuencial azul para el mapa de horas. Validadas con el script de la guía
+ * de visualización contra `--bg-elevated` en cada tema (CVD ΔE ≥ 24,
+ * contraste ≥ 3:1). El oscuro es su propia selección, no una inversión: en
+ * la rampa, lo poco se hunde hacia el fondo y lo mucho brilla.
+ * ------------------------------------------------------------------------ */
+:root {
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-seq-1: #cde2fb;
+  --viz-seq-2: #9ec5f4;
+  --viz-seq-3: #6da7ec;
+  --viz-seq-4: #3987e5;
+  --viz-seq-5: #256abf;
+  --viz-seq-6: #184f95;
+}
+
+[data-theme="dark"] {
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-seq-1: #0d366b;
+  --viz-seq-2: #104281;
+  --viz-seq-3: #1c5cab;
+  --viz-seq-4: #2a78d6;
+  --viz-seq-5: #5598e7;
+  --viz-seq-6: #9ec5f4;
+}
+
+@media print {
+  :root,
+  [data-theme="dark"] {
+    --viz-1: #2a78d6;
+    --viz-2: #eb6834;
+    --viz-seq-1: #cde2fb;
+    --viz-seq-2: #9ec5f4;
+    --viz-seq-3: #6da7ec;
+    --viz-seq-4: #3987e5;
+    --viz-seq-5: #256abf;
+    --viz-seq-6: #184f95;
+  }
+}

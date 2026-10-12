@@ -6,6 +6,7 @@ import { buttonClass, PartnerFields, SectionTitle } from '@/features/admin-affil
 import { NO_INDEX_ROBOTS } from '@/lib/seo/metadata';
 import { listPartnersForAdmin, type AffiliatePartner } from '@/server/services/affiliates';
 import { createPartnerAction } from './actions';
+import { hasAdminSession } from '@/server/admin/session';
 
 /**
  * Lista de aliados del programa de afiliados, con sus clics, y el
@@ -19,6 +20,9 @@ interface PageProps {
 }
 
 export default async function AffiliateAdminPage({ searchParams }: PageProps) {
+  // El layout muestra la puerta, pero no frena esta función: sin esto los
+  // datos viajan igual en el payload. Ver `server/admin/session.ts`.
+  if (!(await hasAdminSession())) return null;
   const { status, message } = await searchParams;
 
   let rows: AffiliatePartner[] = [];

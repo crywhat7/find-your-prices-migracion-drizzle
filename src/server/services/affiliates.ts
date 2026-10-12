@@ -210,7 +210,13 @@ export async function getPublicPartner(slug: string): Promise<AffiliatePartner |
  * ese aliado, si no el enlace de afiliado, si no el sitio. Suma el clic.
  * `null` si el aliado no existe o no está vigente.
  */
-export async function resolveOutbound(slug: string, offerId: string | null): Promise<string | null> {
+export interface Outbound {
+  target: string;
+  partnerId: string;
+  offerId: string | null;
+}
+
+export async function resolveOutbound(slug: string, offerId: string | null): Promise<Outbound | null> {
   const partner = await getPublicPartner(slug);
   if (!partner) return null;
 
@@ -225,7 +231,7 @@ export async function resolveOutbound(slug: string, offerId: string | null): Pro
   });
   if (error) console.warn('[affiliates] no se pudo contar el clic:', error.message);
 
-  return target;
+  return { target, partnerId: partner.id, offerId: offer?.id ?? null };
 }
 
 // -----------------------------------------------------------------------------

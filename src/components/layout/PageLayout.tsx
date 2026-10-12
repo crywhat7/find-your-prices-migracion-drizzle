@@ -4,6 +4,7 @@ import { SiteFooter } from "@/components/layout/SiteFooter";
 import { SiteNav } from "@/components/layout/SiteNav";
 import { LocaleProvider } from "@/features/i18n/LocaleContext";
 import { ProductClickTracker } from "@/features/products/ProductClickTracker";
+import { PageViewTracker } from "@/features/analytics/PageViewTracker";
 import type { Locale } from "@/features/i18n/translate";
 import { ThemeProvider } from "@/features/theme/ThemeProvider";
 
@@ -47,6 +48,8 @@ export function PageLayout({ locale, localePaths, children }: PageLayoutProps) {
           <BackToTop label={BACK_TO_TOP[locale]} />
           {/* Un solo listener por página cuenta los clics a productos. */}
           <ProductClickTracker />
+          {/* Y otro cuenta las visitas, para /admin/trafico. */}
+          <PageViewTracker />
         </div>
       </LocaleProvider>
     </ThemeProvider>

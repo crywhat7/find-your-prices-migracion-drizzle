@@ -7,6 +7,7 @@ import { storePaths } from '@/lib/seo/storeSeo';
 import { getStoreForContent } from '@/server/services/storeContent';
 import { ImageUploader } from '@/features/admin-shared/ImageUploader';
 import { removeStoreImageAction, saveStoreAction, uploadStoreImageAction } from '../actions';
+import { hasAdminSession } from '@/server/admin/session';
 
 /**
  * Formulario de una tienda: imagen (Storage) y texto alternativo. Todo por
@@ -28,6 +29,9 @@ const ghostButtonClass =
   'rounded-full border border-[var(--border-strong)] px-5 py-2 text-[0.8125rem] font-medium text-[var(--text)] transition-colors hover:bg-[var(--bg-subtle)]';
 
 export default async function StoreContentEditPage({ params, searchParams }: PageProps) {
+  // El layout muestra la puerta, pero no frena esta función: sin esto los
+  // datos viajan igual en el payload. Ver `server/admin/session.ts`.
+  if (!(await hasAdminSession())) return null;
   const [{ id }, { status, message }] = await Promise.all([params, searchParams]);
   const row = await getStoreForContent(id);
   if (!row) notFound();

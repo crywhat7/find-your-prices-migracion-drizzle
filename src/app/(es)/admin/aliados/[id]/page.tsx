@@ -14,6 +14,7 @@ import {
 import { ImageUploader } from '@/features/admin-shared/ImageUploader';
 import { NO_INDEX_ROBOTS } from '@/lib/seo/metadata';
 import { getPartnerForAdmin } from '@/server/services/affiliates';
+import { hasAdminSession } from '@/server/admin/session';
 import {
   deleteOfferAction,
   deletePartnerAction,
@@ -36,6 +37,9 @@ interface PageProps {
 }
 
 export default async function AffiliateEditPage({ params, searchParams }: PageProps) {
+  // El layout muestra la puerta, pero no frena esta función: sin esto los
+  // datos viajan igual en el payload. Ver `server/admin/session.ts`.
+  if (!(await hasAdminSession())) return null;
   const [{ id }, { status, message }] = await Promise.all([params, searchParams]);
   const partner = await getPartnerForAdmin(id);
   if (!partner) notFound();

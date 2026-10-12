@@ -19,7 +19,16 @@ function expectedToken(secret: string): string {
   return createHmac('sha256', secret).update('admin-session-v1').digest('hex');
 }
 
-/** True si la cookie presente corresponde al CRON_SECRET actual. */
+/**
+ * True si la cookie presente corresponde al CRON_SECRET actual.
+ *
+ * OJO: comprobarlo solo en `admin/layout.tsx` NO alcanza. En el App Router
+ * el layout y la página se renderizan en paralelo; que el layout no pinte
+ * `children` no evita que la página corra, lea la base y mande sus datos en
+ * el payload de React dentro del HTML. Cada `page.tsx` de /admin empieza
+ * con `if (!(await hasAdminSession())) return null;`, y cada route handler
+ * y server action lo vuelve a comprobar.
+ */
 export async function hasAdminSession(): Promise<boolean> {
   const secret = process.env.CRON_SECRET;
   if (!secret) return false;

@@ -114,7 +114,7 @@ const termsEs: LegalDoc = {
 
 const privacyEs: LegalDoc = {
   title: "Privacidad",
-  lede: "Qué se guarda de vos cuando usás el sitio. Respuesta corta: casi nada.",
+  lede: "Qué se guarda de vos cuando usás el sitio. Respuesta corta: casi nada, y nada que diga quién sos.",
   sections: [
     {
       heading: "1. No pedimos datos personales",
@@ -148,9 +148,24 @@ const privacyEs: LegalDoc = {
       ],
     },
     {
-      heading: "4. Datos técnicos",
+      heading: "4. Estadísticas de visitas",
       paragraphs: [
-        "Como cualquier sitio web, el servidor que lo aloja registra datos técnicos de las solicitudes —dirección IP, tipo de navegador, hora— para operar y proteger el servicio. No los usamos para identificar personas ni los cruzamos con otras fuentes.",
+        "Para saber cuánta gente usa el sitio —y poder mostrárselo a los aliados que lo sostienen— contamos las visitas con una medición propia, sin herramientas de terceros. De cada página que abrís se anota:",
+      ],
+      list: [
+        "Qué página fue y a qué hora.",
+        "De qué sitio llegaste (por ejemplo, google.com o facebook.com) y, si el enlace los traía, sus parámetros de campaña (utm).",
+        "Tu ubicación aproximada —país, región y ciudad— tal como la deduce la red por la que te conectás. No es tu dirección ni tu ubicación exacta.",
+        "El tipo de dispositivo, el navegador, el sistema operativo y el ancho de la pantalla.",
+        "Un número de sesión al azar que vive en el almacenamiento de esa pestaña y se borra al cerrarla.",
+      ],
+    },
+    {
+      heading: "",
+      paragraphs: [
+        "Tu dirección IP no se guarda. Se usa en el momento para calcular un código anónimo que permite contar visitantes únicos dentro de un mes; el código cambia cada mes, no se puede convertir de vuelta en la IP y no sirve para seguir a nadie de un mes al otro.",
+        "Estas cifras se usan solo agregadas —cuántas visitas, desde qué países, con qué dispositivos— y así, agregadas, se comparten con aliados actuales o posibles. Nunca se venden ni se cruzan con otras fuentes. Se borran a los 25 meses.",
+        "Aparte, como cualquier sitio web, el servidor que lo aloja registra datos técnicos de las solicitudes para operar y proteger el servicio.",
       ],
     },
     {
@@ -303,7 +318,7 @@ const termsEn: LegalDoc = {
 
 const privacyEn: LegalDoc = {
   title: "Privacy",
-  lede: "What we keep about you when you use the site. Short answer: almost nothing.",
+  lede: "What we keep about you when you use the site. Short answer: almost nothing, and nothing that says who you are.",
   sections: [
     {
       heading: "1. We ask for no personal data",
@@ -337,9 +352,24 @@ const privacyEn: LegalDoc = {
       ],
     },
     {
-      heading: "4. Technical data",
+      heading: "4. Visit statistics",
       paragraphs: [
-        "Like any website, the server hosting it logs technical request data — IP address, browser type, timestamp — to operate and protect the service. We do not use it to identify people and do not cross-reference it with other sources.",
+        "To know how many people use the site — and to be able to show it to the partners who keep it running — we count visits with our own measurement, with no third-party tools. For each page you open we record:",
+      ],
+      list: [
+        "Which page it was and when.",
+        "Which site you came from (for example google.com or facebook.com) and, if the link carried them, its campaign parameters (utm).",
+        "Your approximate location — country, region and city — as inferred from the network you connect through. It is not your address or exact location.",
+        "Device type, browser, operating system and screen width.",
+        "A random session number that lives in that tab's storage and is deleted when you close it.",
+      ],
+    },
+    {
+      heading: "",
+      paragraphs: [
+        "Your IP address is not stored. It is used on the spot to compute an anonymous code that lets us count unique visitors within a month; the code changes every month, cannot be turned back into the IP, and cannot be used to follow anyone from one month to the next.",
+        "These figures are only used in aggregate — how many visits, from which countries, on which devices — and in that aggregate form they are shared with current or prospective partners. They are never sold or cross-referenced with other sources. They are deleted after 25 months.",
+        "Separately, like any website, the hosting server logs technical request data to operate and protect the service.",
       ],
     },
     {

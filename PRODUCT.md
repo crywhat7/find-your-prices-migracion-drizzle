@@ -106,8 +106,15 @@ producto hace.
   elude autenticación ni protecciones.
 - El endpoint del cron está protegido por `CRON_SECRET`. Un scraper abierto a
   internet sería una denegación de servicio gratis contra las tiendas.
-- No hay cuentas ni sesión de usuario. Lo único que se guarda del visitante vive
-  en el `localStorage` de su propio navegador.
+- No hay cuentas ni sesión de usuario. Las preferencias del visitante viven en
+  el `localStorage` de su propio navegador.
+- Hay estadísticas de visitas propias (octubre 2026, migración 0048), para
+  mostrarles el tráfico a los aliados: página, hora, referencia, UTM,
+  ubicación aproximada (cabeceras de Vercel), dispositivo, navegador y
+  sistema. **La IP no se guarda**: solo un HMAC con sal mensual para contar
+  únicos dentro del mes. Se ven en `/admin/trafico`, con un reporte
+  imprimible para aliados. La política de privacidad lo describe; si cambia
+  lo que se guarda, cambia ella también.
 
 **Decisiones abiertas, no inventar**
 

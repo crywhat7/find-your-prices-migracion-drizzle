@@ -33,6 +33,7 @@ SQL Editor de Supabase. Son idempotentes: volver a correrlos no rompe nada.
 | 0037 | `0037_seed_metromedia.sql` | Alta de Metromedia (librería, Odoo v13) y 13 targets, uno por categoría raíz. Sin `full_catalog`: el catálogo (12.9k) no cabe en una corrida. |
 | 0038 | `0038_map_metromedia.sql` | Mapeo **por tienda** de las categorías de Metromedia: los 52 géneros → `libros`, Entretenimiento → `juegos-de-mesa-rompecabezas`. Aparte de 0036 porque sus nombres ("Cocina", "Arte", "Salud") son genéricos y chocarían con otras tiendas. |
 | 0047 | `0047_affiliates.sql` | Programa de afiliados: `affiliate_partners` y `affiliate_offers` (cerradas a las llaves públicas, se leen con service_role), `record_affiliate_click(partner, offer)` para la redirección `/go/<aliado>`, bucket `affiliate-images` y Eneba creado **inactivo**. Se administra desde `/admin/aliados`. |
+| 0048 | `0048_analytics.sql` | Estadísticas de visitas: `page_views` y `affiliate_click_events` (sin IP; `visitor_hash` = HMAC con sal mensual), `analytics_report(desde, hasta, tramo)` y `analytics_totals` para `/admin/trafico`, y `purge_old_analytics()` (25 meses; se programa con pg_cron si existe). |
 | 0039 | `0039_protect_categories.sql` | Candado: `BEFORE DELETE/TRUNCATE` en `categories` y `category_content` aborta salvo que la transacción ponga `find_your_prices.allow_delete = on`. El panel borra vía `delete_category(uuid)`, que abre el candado solo en su transacción. |
 
 > **Paso obligatorio después de 0010:** en Supabase, `Settings → API → Exposed

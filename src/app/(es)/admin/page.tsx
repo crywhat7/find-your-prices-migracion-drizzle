@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { NO_INDEX_ROBOTS } from '@/lib/seo/metadata';
 import { CACHE_SCOPES, isCacheScope } from '@/server/services/cacheRefresh';
 import { lockAdmin, refreshCacheAction } from './actions';
+import { hasAdminSession } from '@/server/admin/session';
 
 /**
  * Hub del panel: la puerta a cada herramienta y los botones de caché.
@@ -21,6 +22,11 @@ interface Tool {
 }
 
 const TOOLS: Tool[] = [
+  {
+    href: '/admin/trafico',
+    title: 'Tráfico',
+    description: 'Visitas, visitantes, de dónde llegan, dispositivos y horas, más el reporte imprimible para aliados.',
+  },
   {
     href: '/admin/scraping',
     title: 'Scraping',
@@ -56,6 +62,9 @@ const buttonClass =
   'rounded-full border border-[var(--border-strong)] px-4 py-1.5 text-[0.8125rem] font-medium text-[var(--text)] outline-none transition-colors duration-[var(--dur-fast)] hover:bg-[var(--bg-subtle)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]';
 
 export default async function AdminHubPage({ searchParams }: PageProps) {
+  // El layout muestra la puerta, pero no frena esta función: sin esto los
+  // datos viajan igual en el payload. Ver `server/admin/session.ts`.
+  if (!(await hasAdminSession())) return null;
   const { cache, paths } = await searchParams;
   const refreshed = cache && isCacheScope(cache) ? CACHE_SCOPES.find((info) => info.scope === cache) : null;
 

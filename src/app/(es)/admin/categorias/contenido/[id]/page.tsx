@@ -7,6 +7,7 @@ import { categoryPaths } from '@/lib/seo/categorySeo';
 import { getCategoryForContent, type CategoryContentFields } from '@/server/services/categoryContent';
 import { ImageUploader } from '@/features/admin-shared/ImageUploader';
 import { removeImageAction, saveContentAction, uploadImageAction } from '../actions';
+import { hasAdminSession } from '@/server/admin/session';
 
 /**
  * Formulario de contenido de una categoría: imagen (Storage), destacado y
@@ -29,6 +30,9 @@ const ghostButtonClass =
   'rounded-full border border-[var(--border-strong)] px-5 py-2 text-[0.8125rem] font-medium text-[var(--text)] transition-colors hover:bg-[var(--bg-subtle)]';
 
 export default async function CategoryContentEditPage({ params, searchParams }: PageProps) {
+  // El layout muestra la puerta, pero no frena esta función: sin esto los
+  // datos viajan igual en el payload. Ver `server/admin/session.ts`.
+  if (!(await hasAdminSession())) return null;
   const [{ id }, { status, message }] = await Promise.all([params, searchParams]);
   const row = await getCategoryForContent(id);
   if (!row) notFound();

@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { SITE_ROUTES } from "@/features/i18n/routes";
-import { resolveOutbound } from "@/server/services/affiliates";
+import { resolveOutbound, type Outbound } from "@/server/services/affiliates";
+import { readVisitor, recordAffiliateClickEvent } from "@/server/services/analytics";
 
 /**
  * GET /go/<aliado>[?o=<producto>]
@@ -30,13 +31,21 @@ export async function GET(
   const { partner } = await params;
   const offer = new URL(request.url).searchParams.get("o");
 
-  let target: string | null = null;
+  let outbound: Outbound | null = null;
   try {
-    target = await resolveOutbound(partner, offer && UUID_PATTERN.test(offer) ? offer : null);
+    outbound = await resolveOutbound(partner, offer && UUID_PATTERN.test(offer) ? offer : null);
   } catch (error) {
     console.error("[go] no se pudo resolver el aliado:", error);
   }
 
-  const destination = target ?? new URL(SITE_ROUTES.partners.es, request.url).toString();
+  // El clic con fecha, país y dispositivo, para el reporte de aliados. Los
+  // bots (vistas previas de WhatsApp, rastreadores) no cuentan.
+  const visitor = readVisitor(request.headers);
+  if (outbound && visitor) {
+    const { partnerId, offerId } = outbound;
+    after(() => recordAffiliateClickEvent(partnerId, offerId, visitor));
+  }
+
+  const destination = outbound?.target ?? new URL(SITE_ROUTES.partners.es, request.url).toString();
   return NextResponse.redirect(destination, { status: 302, headers: HEADERS });
 }

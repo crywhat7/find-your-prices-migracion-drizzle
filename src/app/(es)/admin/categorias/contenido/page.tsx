@@ -4,6 +4,7 @@ import { ImagePlate } from '@/components/shared/ImagePlate';
 import { NO_INDEX_ROBOTS } from '@/lib/seo/metadata';
 import { categoryPaths } from '@/lib/seo/categorySeo';
 import { listCategoriesForContent } from '@/server/services/categoryContent';
+import { hasAdminSession } from '@/server/admin/session';
 
 /**
  * Lista de categorías para mantener su contenido: imagen, destacado y texto
@@ -13,6 +14,9 @@ export const metadata: Metadata = { title: 'Contenido de categorías', robots: N
 export const dynamic = 'force-dynamic';
 
 export default async function CategoryContentIndexPage() {
+  // El layout muestra la puerta, pero no frena esta función: sin esto los
+  // datos viajan igual en el payload. Ver `server/admin/session.ts`.
+  if (!(await hasAdminSession())) return null;
   const rows = await listCategoriesForContent();
   const roots = rows.filter((row) => row.parentId === null);
   const childrenOf = new Map<string, typeof rows>();

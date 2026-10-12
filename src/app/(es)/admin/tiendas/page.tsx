@@ -4,6 +4,7 @@ import { ImagePlate } from '@/components/shared/ImagePlate';
 import { NO_INDEX_ROBOTS } from '@/lib/seo/metadata';
 import { storePaths } from '@/lib/seo/storeSeo';
 import { listStoresForContent } from '@/server/services/storeContent';
+import { hasAdminSession } from '@/server/admin/session';
 
 /**
  * Lista de tiendas para mantener su imagen. Cada fila lleva al formulario.
@@ -13,6 +14,9 @@ export const metadata: Metadata = { title: 'Tiendas', robots: NO_INDEX_ROBOTS };
 export const dynamic = 'force-dynamic';
 
 export default async function StoreContentIndexPage() {
+  // El layout muestra la puerta, pero no frena esta función: sin esto los
+  // datos viajan igual en el payload. Ver `server/admin/session.ts`.
+  if (!(await hasAdminSession())) return null;
   const rows = await listStoresForContent();
   const withImage = rows.filter((row) => row.imageUrl).length;
 

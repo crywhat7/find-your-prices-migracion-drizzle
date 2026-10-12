@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { NO_INDEX_ROBOTS } from '@/lib/seo/metadata';
 import { loadCategoryAdminData } from '@/server/services/categories';
 import { CategoryAdmin } from '@/features/admin-categories/CategoryAdmin';
+import { hasAdminSession } from '@/server/admin/session';
 
 /**
  * Panel de categorías.
@@ -36,6 +37,9 @@ async function load(): Promise<LoadResult> {
 }
 
 export default async function CategoryAdminPage() {
+  // El layout muestra la puerta, pero no frena esta función: sin esto los
+  // datos viajan igual en el payload. Ver `server/admin/session.ts`.
+  if (!(await hasAdminSession())) return null;
   const result = await load();
   if (result.ok) return <CategoryAdmin {...result.data} />;
 

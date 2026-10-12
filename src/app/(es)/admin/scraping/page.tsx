@@ -5,6 +5,7 @@ import { listStrategies } from '@/server/scraping/registry';
 import { recoverStaleRuns } from '@/server/scraping/runner';
 import { ScrapingDashboard } from '@/features/admin-scraping/ScrapingDashboard';
 import type { RunSummary, StoreOption, TargetHealth } from '@/features/admin-scraping/types';
+import { hasAdminSession } from '@/server/admin/session';
 
 /**
  * Panel de scraping.
@@ -97,6 +98,9 @@ async function loadDashboardData(): Promise<LoadResult> {
 }
 
 export default async function ScrapingAdminPage() {
+  // El layout muestra la puerta, pero no frena esta función: sin esto los
+  // datos viajan igual en el payload. Ver `server/admin/session.ts`.
+  if (!(await hasAdminSession())) return null;
   const { targets, stores, recentRuns, metrics, error } = await loadDashboardData();
 
   if (error) {
