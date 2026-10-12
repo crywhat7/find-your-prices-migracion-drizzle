@@ -50,16 +50,23 @@ function monthKey(now: Date): string {
   return new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString().slice(0, 7);
 }
 
+/**
+ * La IP real. En Cloudflare `cf-connecting-ip` es la fuente confiable: la
+ * pone Cloudflare y el visitante no la puede falsear, cosa que sí puede con
+ * `x-forwarded-for`. Las demás quedan para otros proveedores.
+ */
 function clientIp(headers: Headers): string {
+  const cloudflare = headers.get('cf-connecting-ip')?.trim();
+  if (cloudflare) return cloudflare;
   const forwarded = headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-  return forwarded || headers.get('x-real-ip') || headers.get('cf-connecting-ip') || '';
+  return forwarded || headers.get('x-real-ip') || '';
 }
 
 function header(headers: Headers, name: string): string | null {
   const value = headers.get(name)?.trim();
   if (!value) return null;
   try {
-    // Vercel manda la ciudad codificada ("San%20Pedro%20Sula").
+    // Algunos proveedores mandan la ciudad codificada ("San%20Pedro%20Sula").
     return decodeURIComponent(value).slice(0, 80);
   } catch {
     return value.slice(0, 80);
@@ -68,8 +75,14 @@ function header(headers: Headers, name: string): string | null {
 
 /**
  * Lo que se puede saber de quien hace la petición, o `null` si es un bot.
- * La ubicación sale de las cabeceras de Vercel (o Cloudflare); en local no
- * existen y queda vacía.
+ * La ubicación sale de las cabeceras que pone el proveedor, sin consultar a
+ * nadie más. En Cloudflare (donde corre el sitio):
+ *   - `cf-ipcountry` llega siempre.
+ *   - `cf-ipcity`, `cf-region-code` y `cf-region` solo llegan con la regla
+ *     administrada "Add visitor location headers" activada en el panel de
+ *     Cloudflare (Rules → Settings → Managed Transforms). Sin ella, país sí,
+ *     ciudad no.
+ * Las de Vercel quedan como alternativa. En local no existe ninguna.
  */
 export function readVisitor(headers: Headers, now: Date = new Date()): VisitorContext | null {
   const userAgent = headers.get('user-agent') ?? '';
@@ -81,13 +94,15 @@ export function readVisitor(headers: Headers, now: Date = new Date()): VisitorCo
     .digest('base64url')
     .slice(0, 22);
 
-  const country = header(headers, 'x-vercel-ip-country') ?? header(headers, 'cf-ipcountry');
+  const country = header(headers, 'cf-ipcountry') ?? header(headers, 'x-vercel-ip-country');
   return {
     visitorHash,
     ...parseUserAgent(userAgent),
-    country: country && /^[A-Z]{2}$/.test(country) ? country : null,
-    region: header(headers, 'x-vercel-ip-country-region'),
-    city: header(headers, 'x-vercel-ip-city'),
+    // Cloudflare usa "XX" para desconocido y "T1" para Tor: ninguno es un país.
+    country: country && /^[A-Z]{2}$/.test(country) && country !== 'XX' ? country : null,
+    region:
+      header(headers, 'cf-region-code') ?? header(headers, 'cf-region') ?? header(headers, 'x-vercel-ip-country-region'),
+    city: header(headers, 'cf-ipcity') ?? header(headers, 'x-vercel-ip-city'),
   };
 }
 

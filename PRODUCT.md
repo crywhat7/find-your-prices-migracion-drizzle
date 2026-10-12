@@ -110,7 +110,7 @@ producto hace.
   el `localStorage` de su propio navegador.
 - Hay estadísticas de visitas propias (octubre 2026, migración 0048), para
   mostrarles el tráfico a los aliados: página, hora, referencia, UTM,
-  ubicación aproximada (cabeceras de Vercel), dispositivo, navegador y
+  ubicación aproximada (cabeceras de Cloudflare), dispositivo, navegador y
   sistema. **La IP no se guarda**: solo un HMAC con sal mensual para contar
   únicos dentro del mes. Se ven en `/admin/trafico`, con un reporte
   imprimible para aliados. La política de privacidad lo describe; si cambia
