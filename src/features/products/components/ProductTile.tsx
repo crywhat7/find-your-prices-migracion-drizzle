@@ -57,7 +57,7 @@ export function ProductTile({
        anidado en un <a> es HTML inválido y en la práctica hace que pulsarlo
        también navegue. Por eso la tarjeta es un contenedor posicionado con el
        enlace dentro y el control encima. */
-    <div className="group relative h-full">
+    <div data-fyp-tile className="group relative h-full">
       <Link
         href={href}
         data-product-id={product.id}
@@ -71,7 +71,7 @@ export function ProductTile({
             Blanca siempre, en claro y en oscuro: casi todas las fotos de
             tienda vienen con fondo blanco, y sobre una placa gris ese
             fondo se ve como un cuadro pegado dentro de otro. */}
-        <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-white transition-[box-shadow] duration-[var(--dur-base)] ease-[var(--ease-out-quart)] group-hover:shadow-[var(--shadow-md)]">
+        <div data-fyp-piece className="relative aspect-square w-full overflow-hidden rounded-2xl bg-white transition-[box-shadow] duration-[var(--dur-base)] ease-[var(--ease-out-quart)] group-hover:shadow-[var(--shadow-md)]">
           {imageUrl ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
@@ -126,14 +126,14 @@ export function ProductTile({
             fichas del mismo artículo —el nombre se repite, la tienda no—.
             La marca va bajo el nombre, también en gris: es dato de apoyo. */}
         <div className="flex flex-1 flex-col gap-0.5 px-0.5">
-          <span className="truncate text-[0.75rem] text-[var(--text-tertiary)]">{store}</span>
+          <span data-fyp-piece className="truncate text-[0.75rem] text-[var(--text-tertiary)]">{store}</span>
 
-          <h3 className="line-clamp-2 text-[0.875rem] leading-[1.35] font-medium tracking-[-0.01em] text-[var(--text)] sm:text-[0.9375rem]">
+          <h3 data-fyp-piece className="line-clamp-2 text-[0.875rem] leading-[1.35] font-medium tracking-[-0.01em] text-[var(--text)] sm:text-[0.9375rem]">
             {name}
           </h3>
 
           {(brand || (ratingAverage !== undefined && ratingCount !== undefined && ratingCount > 0)) && (
-            <div className="flex items-center gap-x-2 text-[0.75rem] text-[var(--text-tertiary)]">
+            <div data-fyp-piece className="flex items-center gap-x-2 text-[0.75rem] text-[var(--text-tertiary)]">
               {brand && <span className="truncate">{brand}</span>}
               {ratingAverage !== undefined && ratingCount !== undefined && ratingCount > 0 && (
                 <>
@@ -152,7 +152,7 @@ export function ProductTile({
           {/* El precio se ancla abajo con mt-auto: en una cuadrícula de fichas
               de alto desigual, las cifras quedan alineadas entre sí y se pueden
               comparar recorriendo una sola línea horizontal. */}
-          <div className="mt-auto flex flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-2">
+          <div data-fyp-piece className="mt-auto flex flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-2">
             <span className="text-[1.0625rem] font-semibold tracking-[-0.02em] tabular-nums text-[var(--text)]">
               {formatPrice(price, currency, locale)}
             </span>
@@ -168,7 +168,7 @@ export function ProductTile({
       {/* El corazón y el carrito en la esquina. El control de comparar queda apagado
           por ahora —la bandeja sigue existiendo, pero no se alimenta desde la
           ficha—; se reactiva descomentando el bloque. */}
-      <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
+      <div data-fyp-piece className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
         <FavoriteToggle product={product} labels={favoriteLabels} />
         <CartToggle product={product} labels={cartLabels} />
         {/* <CompareToggle product={product} labels={compareLabels} /> */}

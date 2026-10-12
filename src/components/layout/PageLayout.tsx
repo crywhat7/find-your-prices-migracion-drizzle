@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { BackToTop } from "@/components/shared/BackToTop";
+import { CrumbleEasterEgg } from "@/components/shared/CrumbleEasterEgg";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { SiteNav } from "@/components/layout/SiteNav";
 import { LocaleProvider } from "@/features/i18n/LocaleContext";
@@ -50,6 +51,8 @@ export function PageLayout({ locale, localePaths, children }: PageLayoutProps) {
           <ProductClickTracker />
           {/* Y otro cuenta las visitas, para /admin/trafico. */}
           <PageViewTracker />
+          {/* Easter egg: Ctrl/Cmd + 0 + 0 + 0. */}
+          <CrumbleEasterEgg />
         </div>
       </LocaleProvider>
     </ThemeProvider>
