@@ -209,12 +209,27 @@ function toProduct(row: CatalogRow, locale: CatalogLocale): Product {
 // -----------------------------------------------------------------------------
 
 /**
- * Si hay base configurada. Sin las variables (pruebas, un clon recién bajado)
- * el catálogo trabaja con el fixture a propósito; con ellas, un fallo es un
- * fallo y se propaga.
+ * Si hay base configurada. Sin las variables (pruebas, desarrollo, un clon
+ * recién bajado) el catálogo trabaja con el fixture a propósito; con ellas, un
+ * fallo es un fallo y se propaga.
+ *
+ * En producción la falta de base no es un modo: es un error, y lanza. Pasó el
+ * 13-oct-2026: el build de Cloudflare corría sin las variables de Supabase,
+ * armaba la portada con el fixture ("Wireless Mouse", Amazon) y `/tiendas` con
+ * "0 artículos de 0 tiendas", y el deploy subía esas páginas a la caché de R2,
+ * que las servía a todos hasta que vencían. Lanzando, el build falla y
+ * producción se queda con la versión anterior; en tiempo de ejecución, la
+ * página conserva su última copia buena.
  */
 export function hasDatabase(): boolean {
-  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL) return true;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'Falta NEXT_PUBLIC_SUPABASE_URL en un build de producción: sin base, las páginas saldrían vacías y quedarían en caché. ' +
+        'En Cloudflare va en Settings → Build → Variables, no solo en las variables del Worker.',
+    );
+  }
+  return false;
 }
 
 /**
