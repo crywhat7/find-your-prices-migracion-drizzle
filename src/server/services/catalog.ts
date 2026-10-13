@@ -1,6 +1,7 @@
 import 'server-only';
 import { unstable_cache } from 'next/cache';
 import { getSupabaseAdmin } from '@/server/db/supabase';
+import { wordsToTsQuery } from '@/server/services/searchSynonyms';
 import type { AvailabilityStatus } from '@/server/scraping/types';
 import type { Product } from '@/types';
 import {
@@ -586,6 +587,12 @@ export interface SearchCatalogResult {
    * `null` cuando no se pidió (`withTotal: false`).
    */
   total: number | null;
+  /**
+   * "Quizá quisiste decir": la búsqueda con las palabras mal escritas
+   * corregidas. Solo cuando esta no trajo nada y la corregida sí, con los
+   * mismos filtros.
+   */
+  suggestion?: string;
 }
 
 /**
@@ -597,7 +604,31 @@ export interface SearchCatalogResult {
  */
 export async function searchCatalog(params: SearchCatalogParams): Promise<SearchCatalogResult> {
   if (!hasDatabase()) return { products: [], total: 0 };
-  return withRetry('búsqueda en el catálogo', () => searchCatalogOnce(params));
+  const result = await withRetry('búsqueda en el catálogo', () => searchCatalogOnce(params));
+  if (result.total !== 0 || (params.offset ?? 0) > 0 || !params.query?.trim()) return result;
+  const suggestion = await findSpellingSuggestion(params);
+  return suggestion ? { ...result, suggestion } : result;
+}
+
+/**
+ * La corrección de una búsqueda sin resultados (`suggest_search_query`,
+ * migración 0057), solo si trae algo con los mismos filtros: ofrecer una
+ * corrección que también da cero es peor que no ofrecer nada.
+ *
+ * Es un extra: si la función aún no existe o la base falla, no hay sugerencia
+ * y la búsqueda sigue respondiendo su "sin resultados".
+ */
+async function findSpellingSuggestion(params: SearchCatalogParams): Promise<string | undefined> {
+  const needle = normalizeText(params.query ?? '');
+  if (needle.length < 3) return undefined;
+  try {
+    const { data, error } = await getSupabaseAdmin().rpc('suggest_search_query', { p_query: needle });
+    if (error || typeof data !== 'string' || !data.trim() || data === needle) return undefined;
+    const check = await searchCatalogOnce({ ...params, query: data, offset: 0, limit: 1, withTotal: true });
+    return check.total ? data : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Etiqueta de caché de las búsquedas; `revalidateTag` la vacía de golpe. */
@@ -749,7 +780,8 @@ function applyCategoryFacet(request: any, value: string | string[] | undefined):
  * "Play 5" → "play:* & 5:*". Se normaliza igual que `normalize_text` en la
  * base (minúsculas, sin acentos, solo [a-z0-9]) para que las palabras
  * coincidan con lo que indexa `normalized_name`. Devuelve null si no queda
- * ninguna palabra útil.
+ * ninguna palabra útil. Los sinónimos ("vbucks" = "v bucks") los agrega
+ * `wordsToTsQuery`.
  */
 export function toPrefixTsQuery(raw: string | undefined): string | null {
   if (!raw) return null;
@@ -759,8 +791,7 @@ export function toPrefixTsQuery(raw: string | undefined): string | null {
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter(Boolean);
-  if (words.length === 0) return null;
-  return words.map((word) => `${word}:*`).join(' & ');
+  return wordsToTsQuery(words);
 }
 
 /**

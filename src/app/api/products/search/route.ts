@@ -72,7 +72,7 @@ export async function GET(request: Request): Promise<Response> {
   const offset = numericParam(url.searchParams.get("offset")) ?? 0;
 
   try {
-    const { products, total } = await searchCatalogCached({
+    const { products, total, suggestion } = await searchCatalogCached({
       query: param("q"),
       store: listParam("store"),
       storeSlug: listParam("storeSlug"),
@@ -93,7 +93,7 @@ export async function GET(request: Request): Promise<Response> {
     });
 
     return Response.json(
-      { ok: true, products, total },
+      { ok: true, products, total, ...(suggestion ? { suggestion } : {}) },
       { headers: { "Cache-Control": CACHE_CONTROL } },
     );
   } catch (error) {

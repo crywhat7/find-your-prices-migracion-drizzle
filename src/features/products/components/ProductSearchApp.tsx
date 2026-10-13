@@ -703,6 +703,24 @@ export function ProductSearchApp({
             emptyMessage={
               feed.hasError && shownCount === 0 ? t("searchErrorLabel") : t("noResultsMessage")
             }
+            /* Una búsqueda sin resultados casi siempre es un error de tipeo
+               ("televsor"): el servidor propone la corrección solo si esa sí
+               trae algo, y un clic la aplica. */
+            emptyAction={
+              remoteSearch && !feed.hasError && feed.suggestion ? (
+                <p className="text-[0.9375rem] text-[var(--text-secondary)]">
+                  {t("didYouMeanLabel")}{" "}
+                  <button
+                    type="button"
+                    onClick={() => setQuery(feed.suggestion ?? "")}
+                    className="rounded-sm font-semibold text-[var(--accent)] underline-offset-[3px] outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  >
+                    {feed.suggestion}
+                  </button>
+                  ?
+                </p>
+              ) : undefined
+            }
             compareLabels={compareToggleLabels}
             favoriteLabels={favoriteToggleLabels}
             cartLabels={cartLabels}

@@ -61,6 +61,8 @@ interface FeedSnapshot {
   products: Product[];
   /** Total que cumple los filtros, no lo que se lleva cargado. */
   total: number;
+  /** "Quizá quisiste decir", si la búsqueda no trajo nada. */
+  suggestion?: string;
 }
 
 export interface UseCatalogFeedOptions {
@@ -85,6 +87,11 @@ export interface UseCatalogFeedOptions {
 export interface CatalogFeed {
   products: Product[];
   total: number;
+  /**
+   * Búsqueda corregida que sí trae resultados, cuando esta no trajo ninguno
+   * ("televsor" → "televisor"). La da el servidor; ver `searchCatalog`.
+   */
+  suggestion?: string;
   /**
    * Lo que se ve es la respuesta a la consulta actual y no la anterior, que
    * sigue en pantalla mientras llega la nueva. Solo con esto un total de 0
@@ -194,6 +201,7 @@ export function useCatalogFeed({
           key: queryString,
           products: Array.isArray(payload.products) ? payload.products : [],
           total: typeof payload.total === "number" ? payload.total : 0,
+          suggestion: typeof payload.suggestion === "string" ? payload.suggestion : undefined,
         });
         setStatus("idle");
       } catch {
@@ -308,6 +316,7 @@ export function useCatalogFeed({
   return {
     products,
     total,
+    suggestion: settled?.suggestion,
     isSettled: settled !== null,
     isSearching: status === "searching",
     isLoadingMore: status === "loadingMore",

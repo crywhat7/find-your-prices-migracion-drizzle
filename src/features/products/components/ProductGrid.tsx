@@ -9,6 +9,8 @@ export interface ProductGridProps {
   products: Product[];
   locale?: string;
   emptyMessage?: string;
+  /** Debajo del mensaje de vacío: el "quizá quisiste decir". */
+  emptyAction?: ReactNode;
   /**
    * Cuántas columnas como máximo. `3` es la del catálogo, que comparte el
    * ancho con la barra de filtros en escritorio; `4` es para las retículas
@@ -71,6 +73,7 @@ export function ProductGrid({
   products,
   locale,
   emptyMessage,
+  emptyAction,
   columns = 3,
   productHref,
   compareLabels,
@@ -129,6 +132,7 @@ export function ProductGrid({
           <p className="max-w-[32ch] text-[0.9375rem] text-[var(--text-secondary)]">
             {emptyMessage}
           </p>
+          {emptyAction}
         </div>
       )}
     </>

@@ -110,6 +110,7 @@ export type DictionaryKey =
   | "partnerBannerLabel"
   | "enebaBannerAlt"
   | "partnerBadge"
+  | "didYouMeanLabel"
   | "loadingMoreLabel"
   | "feedErrorLabel"
   | "searchErrorLabel"
