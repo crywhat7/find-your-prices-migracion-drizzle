@@ -113,6 +113,8 @@ export const es: Dictionary = {
   compareAttrRating: "Calificación",
   resultsListLabel: "Resultados",
   adLabel: "Publicidad",
+  partnerBannerLabel: "Conoce a nuestro aliado",
+  enebaBannerAlt: "Eneba: ahorra en juegos y tarjetas de regalo",
 
   // --- Desplazamiento del catálogo ---
   loadingMoreLabel: "Cargando más productos…",

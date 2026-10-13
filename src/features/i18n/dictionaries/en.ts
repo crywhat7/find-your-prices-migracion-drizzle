@@ -112,6 +112,8 @@ export const en: Dictionary = {
   compareAttrRating: "Rating",
   resultsListLabel: "Results",
   adLabel: "Advertisement",
+  partnerBannerLabel: "Meet our partner",
+  enebaBannerAlt: "Eneba: save on games and gift cards",
 
   // --- Catalogue paging ---
   loadingMoreLabel: "Loading more products…",

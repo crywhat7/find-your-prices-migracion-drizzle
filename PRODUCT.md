@@ -98,7 +98,9 @@ producto hace.
   una cookie de sesión; cada página la vuelve a comprobar (la del layout sola
   no protege los datos).
 - **Sostenimiento:** patrocinios y un programa de afiliados (octubre 2026; el
-  primer interesado es Eneba). Los anuncios se quitaron. Los aliados viven en
+  primer interesado es Eneba). Los anuncios de red se quitaron; queda un único
+  banner de Eneba (`EnebaBanner`) intercalado en el catálogo, rotulado
+  "Conoce a nuestro aliado" y con enlace directo al afiliado de Eneba. Los aliados viven en
   su propia sección (`/aliados`, `/en/partners`), con su código promocional y
   productos destacados cargados a mano desde `/admin/aliados`; las salidas
   pasan por `/go/<aliado>`, que cuenta el clic. Las tiendas del comparador no
