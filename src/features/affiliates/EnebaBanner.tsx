@@ -1,34 +1,43 @@
+import type { Locale } from "@/features/i18n/translate";
 import { AFFILIATE_LINK_REL, ENEBA_AFFILIATE_URL } from "./affiliateRules";
 
 /**
- * Banner de Eneba, para intercalar en la retícula del catálogo.
+ * Pieza de Eneba, para intercalar en la retícula del catálogo.
  *
  * El clic va directo al enlace de afiliado de Eneba, sin pasar por `/go/eneba`
  * (así no depende de que el aliado esté cargado y activo en la base, pero esa
- * salida no queda en el reporte de aliados). La imagen es el recurso oficial del
- * programa, con el tamaño fijo con el que Eneba la publica: 728×90 en pantallas
- * anchas, y en teléfono la versión cuadrada-ish de 720×300, que a 360px de
- * ancho todavía se lee (la apaisada quedaba en ~45px de alto). El `width`/`height`
- * reservan el hueco para que al cargar no empuje la lista.
+ * salida no queda en el reporte de aliados). Las imágenes son los recursos
+ * oficiales del programa: la apaisada (728×90) en pantallas anchas, y en
+ * teléfono la de 720×300, que a 360px de ancho todavía se lee.
+ *
+ * Los bloqueadores de anuncios la escondían aunque es una alianza, no un
+ * anuncio. Lo que los dispara son las señales típicas de un banner, así que
+ * se evitan todas:
+ * - Las imágenes se sirven desde nuestro dominio (`public/images/partners`),
+ *   no desde `static.eneba.games`: un pedido a un tercero dentro de una
+ *   retícula es lo primero que bloquean.
+ * - Los archivos tienen nombres neutros, sin "banner", "ad" ni medidas.
+ * - No lleva `width="728" height="90"`, el formato IAB que las reglas buscan
+ *   por atributo: el hueco se reserva con `aspect-ratio` en CSS.
  */
 
-const MOBILE_BANNER_SRC = "https://static.eneba.games/branding/resource/mkqxofkvuu.png";
-const MOBILE_BANNER_WIDTH = 720;
-const MOBILE_BANNER_HEIGHT = 300;
+const IMAGES: Record<Locale, { wide: string; mobile: string }> = {
+  es: { wide: "/images/partners/eneba-ancho-es.webp", mobile: "/images/partners/eneba-cuadro-es.webp" },
+  en: { wide: "/images/partners/eneba-ancho-en.webp", mobile: "/images/partners/eneba-cuadro-en.webp" },
+};
 /** Debajo del breakpoint `sm` de Tailwind (640px), el que pasa el catálogo a tres columnas. */
 const MOBILE_MEDIA = "(max-width: 639px)";
-const BANNER_SRC = "https://static.eneba.games/branding/resource/tvoyodlgxm-es.png";
-const BANNER_WIDTH = 728;
-const BANNER_HEIGHT = 90;
 
 export interface EnebaBannerProps {
-  /** Rótulo sobre el banner ("Conoce a nuestro aliado"), en el idioma de la página. */
+  locale: Locale;
+  /** Rótulo sobre la imagen ("Conoce a nuestro aliado"), en el idioma de la página. */
   label: string;
   /** Texto alternativo de la imagen, en el idioma de la página. */
   alt: string;
 }
 
-export function EnebaBanner({ label, alt }: EnebaBannerProps) {
+export function EnebaBanner({ locale, label, alt }: EnebaBannerProps) {
+  const images = IMAGES[locale];
   return (
     <aside aria-label={label} className="flex flex-col items-center py-2">
       <p className="mb-2 text-[0.6875rem] font-medium uppercase tracking-[0.08em] text-[var(--text-tertiary)]">
@@ -38,23 +47,16 @@ export function EnebaBanner({ label, alt }: EnebaBannerProps) {
         href={ENEBA_AFFILIATE_URL}
         target="_blank"
         rel={AFFILIATE_LINK_REL}
-        className="rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="block w-full max-w-[728px] rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
         <picture>
-          <source
-            media={MOBILE_MEDIA}
-            srcSet={MOBILE_BANNER_SRC}
-            width={MOBILE_BANNER_WIDTH}
-            height={MOBILE_BANNER_HEIGHT}
-          />
+          <source media={MOBILE_MEDIA} srcSet={images.mobile} />
           <img
-            src={BANNER_SRC}
+            src={images.wide}
             alt={alt}
-            width={BANNER_WIDTH}
-            height={BANNER_HEIGHT}
             loading="lazy"
             decoding="async"
-            className="h-auto max-w-full rounded-2xl"
+            className="aspect-[720/300] h-auto w-full rounded-2xl sm:aspect-[728/90]"
           />
         </picture>
       </a>

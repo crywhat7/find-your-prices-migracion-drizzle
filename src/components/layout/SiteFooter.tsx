@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { SHELL } from "@/components/layout/shell";
+import { EnebaAlliance } from "@/features/affiliates/EnebaAlliance";
 import { siteConfig } from "@/config/site";
 import { BUILD_INFO, formatBuildTime } from "@/lib/buildInfo";
 import { useLocale } from "@/features/i18n/LocaleContext";
@@ -56,6 +57,9 @@ export function SiteFooter() {
 
   return (
     <footer className="mt-24 print:hidden border-t border-[var(--border)]">
+      <div className={`${SHELL} pt-10`}>
+        <EnebaAlliance locale={locale} />
+      </div>
       <div className={`${SHELL} flex flex-col gap-8 py-10 sm:flex-row sm:justify-between sm:gap-12`}>
         <div className="flex flex-col gap-1">
           {/* El logo completo, con el nombre escrito: acá hay lugar para él. */}

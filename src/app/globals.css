@@ -624,6 +624,18 @@ select option {
   );
 }
 
+/* Logo de Eneba en la franja de alianza (`EnebaAlliance`): texto morado en
+   claro, blanco en oscuro. Mismo criterio que la marca propia. */
+.ally-logo-eneba {
+  display: block;
+  aspect-ratio: 221.97 / 69;
+  background: url("/images/partners/eneba.svg") center / contain no-repeat;
+}
+
+[data-theme="dark"] .ally-logo-eneba {
+  background-image: url("/images/partners/eneba-logo-blanco.svg");
+}
+
 /* En papel no hay fondos (los navegadores no imprimen imágenes de fondo por
    defecto) y el tema se fuerza claro: se pide que el logo sí salga. */
 @media print {

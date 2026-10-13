@@ -126,7 +126,7 @@ export function ProductSearchApp({
   widenHref,
   scopeCategoryLabel,
 }: ProductSearchAppProps) {
-  const { t } = useLocale();
+  const { t, locale: uiLocale } = useLocale();
 
   const [showFilters, setShowFilters] = useState(false);
 
@@ -690,7 +690,7 @@ export function ProductSearchApp({
             locale={priceLocale}
             productHref={productHref}
             label={t("resultsListLabel")}
-            inlineAd={<EnebaBanner label={t("partnerBannerLabel")} alt={t("enebaBannerAlt")} />}
+            inlineAd={<EnebaBanner locale={uiLocale} label={t("partnerBannerLabel")} alt={t("enebaBannerAlt")} />}
             /* Una búsqueda que falló no es una búsqueda sin resultados: decir
                "no hay productos" cuando lo que pasó es que se cayó la red manda a
                la gente a cambiar los filtros para arreglar algo que no está roto
