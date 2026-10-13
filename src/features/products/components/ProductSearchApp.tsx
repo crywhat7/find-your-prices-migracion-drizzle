@@ -15,6 +15,7 @@ import { SortFilter } from "./SortFilter";
 import { FilterSidebar } from "./FilterSidebar";
 import { FilterSheet } from "./FilterSheet";
 import { EnebaBanner } from "@/features/affiliates/EnebaBanner";
+import { isPartnerStore, partnerStoresFirst } from "@/features/affiliates/affiliateRules";
 import { ProductGrid } from "./ProductGrid";
 import { CatalogFeedFooter } from "./CatalogFeedFooter";
 import { CompareTrayDock } from "./CompareTrayDock";
@@ -252,9 +253,13 @@ export function ProductSearchApp({
    * conteos, así que se derivan de los propios artículos: es lo que mantiene
    * las pruebas y el desarrollo sin base funcionando igual que producción.
    */
+  // Las tiendas aliadas (Eneba) van primero y con su insignia.
   const storeOptions = useMemo(
-    () => storeFacets ?? stores.map((value) => ({ value, count: 0 })),
-    [storeFacets, stores],
+    () =>
+      partnerStoresFirst(storeFacets ?? stores.map((value) => ({ value, count: 0 }))).map((option) =>
+        isPartnerStore({ name: option.value }) ? { ...option, badge: t("partnerBadge") } : option,
+      ),
+    [storeFacets, stores, t],
   );
   const categoryOptions = useMemo(
     () => categoryFacets ?? categories.map((value) => ({ value, count: 0 })),

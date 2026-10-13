@@ -206,6 +206,7 @@ export function FilterOptionList({
                 key={option.value}
                 name={name}
                 label={optionLabel(option, labels.uncategorized)}
+                badge={option.badge}
                 count={option.count}
                 checked={value.includes(option.value)}
                 onSelect={() => toggleOption(option.value)}
@@ -285,6 +286,7 @@ export function FilterOptionList({
 function Option({
   name,
   label,
+  badge,
   count,
   checked,
   onSelect,
@@ -293,6 +295,8 @@ function Option({
 }: {
   name: string;
   label: string;
+  /** Insignia junto al nombre ("Aliado" en las tiendas aliadas). */
+  badge?: string;
   count?: number;
   checked: boolean;
   onSelect: () => void;
@@ -332,6 +336,11 @@ function Option({
 
         <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-[var(--text-secondary)] peer-checked:text-[var(--text)]">
           {label}
+          {badge && (
+            <span className="ml-1.5 rounded-full bg-[var(--accent-soft)] px-1.5 py-px align-[1px] text-[0.625rem] font-semibold uppercase tracking-[0.04em] text-[var(--accent)]">
+              {badge}
+            </span>
+          )}
         </span>
 
         {/* El conteo va antes de elegir, no después: saber que "Televisores"

@@ -114,6 +114,7 @@ export const en: Dictionary = {
   adLabel: "Advertisement",
   partnerBannerLabel: "Meet our partner",
   enebaBannerAlt: "Eneba: save on games and gift cards",
+  partnerBadge: "Partner",
 
   // --- Catalogue paging ---
   loadingMoreLabel: "Loading more products…",

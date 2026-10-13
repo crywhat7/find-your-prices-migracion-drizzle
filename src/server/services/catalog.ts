@@ -167,6 +167,22 @@ function priceColumn(): string {
   return referencePricePublished ? REFERENCE_PRICE_COLUMN : 'price';
 }
 
+/**
+ * Qué tan seguro es que el artículo sirva en Honduras (migración 0056): 0 sin
+ * región o GLOBAL, 1 LATAM / EE. UU., 2 cualquier otra región. Eneba vende la
+ * misma clave por región y la de Brasil o Turquía, que casi nunca se puede
+ * canjear acá, suele ser la más barata: sin esto, buscar "vbucks" las ponía
+ * arriba. Mismo cuidado que con `price_hnl` si la vista aún no la publica.
+ */
+const REGION_RANK_COLUMN = 'region_rank';
+let regionRankPublished = true;
+
+/**
+ * Órdenes que respetan el nivel de región antes que su propia clave. Los de
+ * precio y nombre no: quien pide "menor precio" ve lo más barato.
+ */
+const REGION_FIRST_SORTS: ReadonlySet<CatalogSort> = new Set(['relevance', 'newest', 'discount', 'rating']);
+
 /** Etiquetas de disponibilidad por idioma. El componente solo pinta el texto. */
 const AVAILABILITY_LABELS: Record<'es' | 'en', Partial<Record<AvailabilityStatus, string>>> = {
   es: {
@@ -673,9 +689,9 @@ async function searchCatalogOnce(params: SearchCatalogParams): Promise<SearchCat
   // categoría canónica— en vez de caerse entero.
   let newestColumn = NEWEST_COLUMN;
 
-  for (let attempt = 0; attempt < 6; attempt += 1) {
+  for (let attempt = 0; attempt < 7; attempt += 1) {
     const flags = () =>
-      `${catalogSource}${slugColumnPublished}${categoryColumnsPublished}${referencePricePublished}`;
+      `${catalogSource}${slugColumnPublished}${categoryColumnsPublished}${referencePricePublished}${regionRankPublished}`;
     const published = flags();
     const result = await runCatalogQuery(params, newestColumn);
     if (result !== null) return result;
@@ -844,6 +860,10 @@ async function runCatalogQuery(
     if (!params.includeUnavailable) request = applyAvailabilityFloor(request);
     if (head) return request;
 
+    if (regionRankPublished && REGION_FIRST_SORTS.has(params.sort ?? 'discount')) {
+      request = request.order(REGION_RANK_COLUMN, { ascending: true });
+    }
+
     switch (params.sort) {
       // Lo más nuevo primero. `nullsFirst: false` deja al final lo que no tiene
       // fecha: un artículo sin registrar no es un artículo antiquísimo.
@@ -907,6 +927,10 @@ async function runCatalogQuery(
     }
     if (referencePricePublished && message.includes(REFERENCE_PRICE_COLUMN)) {
       referencePricePublished = false;
+      return null;
+    }
+    if (regionRankPublished && message.includes(REGION_RANK_COLUMN)) {
+      regionRankPublished = false;
       return null;
     }
 

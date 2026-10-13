@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Locale } from "@/features/i18n/translate";
-import { AFFILIATE_LINK_REL, ENEBA_AFFILIATE_URL } from "./affiliateRules";
+import { AFFILIATE_LINK_REL, ENEBA_OUTBOUND_PATH } from "./affiliateRules";
 import {
   nextPromoInterval,
   PROMO_POPUP_STORAGE_KEY,
@@ -150,7 +150,7 @@ export function PartnerPromoPopup({ locale, label, alt, closeLabel }: PartnerPro
       >
         <a
           ref={linkRef}
-          href={ENEBA_AFFILIATE_URL}
+          href={ENEBA_OUTBOUND_PATH}
           target="_blank"
           rel={AFFILIATE_LINK_REL}
           onClick={close}

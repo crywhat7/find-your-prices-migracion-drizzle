@@ -24,8 +24,32 @@ export function partnerOutboundPath(slug: string, offerId?: string): string {
 /** `rel` de todo enlace de afiliado: Google pide `sponsored` para estos. */
 export const AFFILIATE_LINK_REL = "sponsored nofollow noopener";
 
-/** Enlace de afiliado de Eneba, el que usan el banner y el pop-up sin pasar por `/go/eneba`. */
-export const ENEBA_AFFILIATE_URL = "https://www.eneba.com/?af_id=findyourprices";
+/**
+ * Salida hacia Eneba del banner del catálogo y del pop-up. Pasa por
+ * `/go/eneba` como el resto de los aliados: el clic queda en el reporte, y
+ * el `af_id` no viaja en el HTML, donde algunos bloqueadores lo quitan o
+ * esconden el enlace por llevarlo. El destino sale de la base (0052).
+ */
+export const ENEBA_OUTBOUND_PATH = partnerOutboundPath("eneba");
+
+/**
+ * Tiendas del comparador que son aliados oficiales: van primero en el filtro
+ * de tiendas y su ficha lleva la insignia de aliado. Por slug y por nombre,
+ * porque la faceta de tiendas solo trae el nombre.
+ */
+const PARTNER_STORES: ReadonlyArray<{ slug: string; name: string }> = [{ slug: "eneba", name: "Eneba" }];
+
+export function isPartnerStore(store: { slug?: string; name?: string }): boolean {
+  return PARTNER_STORES.some(
+    (partner) => partner.slug === store.slug || partner.name.toLowerCase() === store.name?.trim().toLowerCase(),
+  );
+}
+
+/** Las tiendas aliadas al principio; el resto conserva su orden. */
+export function partnerStoresFirst<T extends { value: string }>(options: readonly T[]): T[] {
+  const partners = options.filter((option) => isPartnerStore({ name: option.value }));
+  return partners.length === 0 ? [...options] : [...partners, ...options.filter((option) => !partners.includes(option))];
+}
 
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 

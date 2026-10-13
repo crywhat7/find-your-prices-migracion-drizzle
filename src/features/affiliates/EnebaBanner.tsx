@@ -1,12 +1,11 @@
 import type { Locale } from "@/features/i18n/translate";
-import { AFFILIATE_LINK_REL, ENEBA_AFFILIATE_URL } from "./affiliateRules";
+import { AFFILIATE_LINK_REL, ENEBA_OUTBOUND_PATH } from "./affiliateRules";
 
 /**
  * Pieza de Eneba, para intercalar en la retícula del catálogo.
  *
- * El clic va directo al enlace de afiliado de Eneba, sin pasar por `/go/eneba`
- * (así no depende de que el aliado esté cargado y activo en la base, pero esa
- * salida no queda en el reporte de aliados). Las imágenes son los recursos
+ * El clic sale por `/go/eneba` (ver `ENEBA_OUTBOUND_PATH`): queda en el
+ * reporte de aliados y el enlace no lleva el `af_id`. Las imágenes son los recursos
  * oficiales del programa: la apaisada (728×90) en pantallas anchas, y en
  * teléfono la de 720×300, que a 360px de ancho todavía se lee.
  *
@@ -44,7 +43,7 @@ export function EnebaBanner({ locale, label, alt }: EnebaBannerProps) {
         {label}
       </p>
       <a
-        href={ENEBA_AFFILIATE_URL}
+        href={ENEBA_OUTBOUND_PATH}
         target="_blank"
         rel={AFFILIATE_LINK_REL}
         className="block w-full max-w-[728px] rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
