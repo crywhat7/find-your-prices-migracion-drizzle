@@ -5,6 +5,7 @@ import { SiteFooter } from "@/components/layout/SiteFooter";
 import { SiteNav } from "@/components/layout/SiteNav";
 import { LocaleProvider } from "@/features/i18n/LocaleContext";
 import { ProductClickTracker } from "@/features/products/ProductClickTracker";
+import { PartnerPromoPopup } from "@/features/affiliates/PartnerPromoPopup";
 import { PageViewTracker } from "@/features/analytics/PageViewTracker";
 import { ClientErrorListener } from "@/features/errors/ClientErrorListener";
 import { VersionWatcher } from "@/features/version/VersionWatcher";
@@ -25,6 +26,20 @@ import { ThemeProvider } from "@/features/theme/ThemeProvider";
 const BACK_TO_TOP: Record<Locale, string> = {
   es: "Volver arriba",
   en: "Back to top",
+};
+
+/** Textos del pop-up de Eneba: también queda fuera del proveedor de idioma. */
+const PARTNER_POPUP: Record<Locale, { label: string; alt: string; close: string }> = {
+  es: {
+    label: "Código de descuento de Eneba",
+    alt: "Find Your Prices x Eneba: 5% de descuento con el código findyourprices",
+    close: "Cerrar",
+  },
+  en: {
+    label: "Eneba discount code",
+    alt: "Find Your Prices x Eneba: 5% off with the code findyourprices",
+    close: "Close",
+  },
 };
 
 export interface PageLayoutProps {
@@ -57,6 +72,13 @@ export function PageLayout({ locale, localePaths, children }: PageLayoutProps) {
           <ClientErrorListener />
           {/* Avisa si esta pestaña quedó con una versión vieja del sitio. */}
           <VersionWatcher locale={locale} />
+          {/* Flyer de Eneba: al entrar y cada 5-10 minutos. */}
+          <PartnerPromoPopup
+            locale={locale}
+            label={PARTNER_POPUP[locale].label}
+            alt={PARTNER_POPUP[locale].alt}
+            closeLabel={PARTNER_POPUP[locale].close}
+          />
           {/* Easter egg: Ctrl/Cmd + 0 + 0 + 0. */}
           <CrumbleEasterEgg />
         </div>

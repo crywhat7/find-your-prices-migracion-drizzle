@@ -1,4 +1,4 @@
-import { AFFILIATE_LINK_REL } from "./affiliateRules";
+import { AFFILIATE_LINK_REL, ENEBA_AFFILIATE_URL } from "./affiliateRules";
 
 /**
  * Banner de Eneba, para intercalar en la retícula del catálogo.
@@ -18,7 +18,6 @@ const MOBILE_BANNER_HEIGHT = 300;
 /** Debajo del breakpoint `sm` de Tailwind (640px), el que pasa el catálogo a tres columnas. */
 const MOBILE_MEDIA = "(max-width: 639px)";
 const BANNER_SRC = "https://static.eneba.games/branding/resource/tvoyodlgxm-es.png";
-const AFFILIATE_URL = "https://www.eneba.com/?af_id=findyourprices";
 const BANNER_WIDTH = 728;
 const BANNER_HEIGHT = 90;
 
@@ -36,7 +35,7 @@ export function EnebaBanner({ label, alt }: EnebaBannerProps) {
         {label}
       </p>
       <a
-        href={AFFILIATE_URL}
+        href={ENEBA_AFFILIATE_URL}
         target="_blank"
         rel={AFFILIATE_LINK_REL}
         className="rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
