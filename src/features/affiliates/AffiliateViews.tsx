@@ -135,7 +135,8 @@ function PartnerCard({ partner, locale, index }: { partner: AffiliatePartner; lo
           alt={partner.imageAlt ?? partner.name}
           name={partner.name}
           eager={index < 2}
-          className="h-16 w-16 shrink-0 rounded-2xl border border-[var(--border)] sm:h-20 sm:w-20"
+          className="h-16 w-24 shrink-0 rounded-2xl border border-[var(--border)] sm:h-20 sm:w-32"
+          imageClassName="p-2.5"
           initialClassName="text-[2.25rem]"
         />
         <span className="min-w-0">
@@ -205,7 +206,8 @@ export function AffiliatePartnerView({ locale, partner }: { locale: Locale; part
               alt={partner.imageAlt ?? partner.name}
               name={partner.name}
               eager
-              className="enter h-20 w-20 rounded-[1.5rem] border border-[var(--border)] sm:h-24 sm:w-24"
+              className="enter h-20 w-32 rounded-[1.5rem] border border-[var(--border)] sm:h-24 sm:w-40"
+              imageClassName="p-3"
               initialClassName="text-[3rem]"
             />
             <div>
