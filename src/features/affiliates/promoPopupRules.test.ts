@@ -8,10 +8,10 @@ import {
 } from "./promoPopupRules";
 
 describe("nextPromoInterval", () => {
-  it("queda entre 5 y 10 minutos", () => {
+  it("queda entre 3 y 8 minutos", () => {
     expect(nextPromoInterval(() => 0)).toBe(PROMO_POPUP_MIN_MS);
     expect(nextPromoInterval(() => 1)).toBe(PROMO_POPUP_MAX_MS);
-    expect(nextPromoInterval(() => 0.5)).toBe(7.5 * 60_000);
+    expect(nextPromoInterval(() => 0.5)).toBe(5.5 * 60_000);
   });
 });
 

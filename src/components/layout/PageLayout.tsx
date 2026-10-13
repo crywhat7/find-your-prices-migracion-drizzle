@@ -72,7 +72,7 @@ export function PageLayout({ locale, localePaths, children }: PageLayoutProps) {
           <ClientErrorListener />
           {/* Avisa si esta pestaña quedó con una versión vieja del sitio. */}
           <VersionWatcher locale={locale} />
-          {/* Flyer de Eneba: al entrar y cada 5-10 minutos. */}
+          {/* Flyer de Eneba: al entrar y cada 3-8 minutos. */}
           <PartnerPromoPopup
             locale={locale}
             label={PARTNER_POPUP[locale].label}

@@ -12,7 +12,7 @@ import {
 /**
  * Pop-up con el flyer de Eneba (5% con el código `findyourprices`).
  *
- * Sale al entrar y vuelve cada 5 a 10 minutos (ver `promoPopupRules`). Si el
+ * Sale al entrar y vuelve cada 3 a 8 minutos (ver `promoPopupRules`). Si el
  * momento llega con la pestaña en segundo plano espera a que vuelva a verse:
  * un pop-up que nadie ve no cuenta como aparición. Se cierra con la X, con
  * Escape o tocando fuera; el flyer entero es el enlace de afiliado.
@@ -137,7 +137,9 @@ export function PartnerPromoPopup({ locale, label, alt, closeLabel }: PartnerPro
       style={{ animation: "fyp-fade var(--dur-base) var(--ease-out-quart) both" }}
       onClick={close}
     >
-      <div aria-hidden="true" className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      {/* El desenfoque sólo desde `sm`: en teléfono, con el flyer ocupando casi
+          toda la pantalla, se leía como una página rota; ahí basta el velo. */}
+      <div aria-hidden="true" className="absolute inset-0 bg-black/75 sm:bg-black/70 sm:backdrop-blur-sm" />
       <div
         role="dialog"
         aria-modal="true"
