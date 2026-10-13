@@ -117,6 +117,8 @@ export const es: Dictionary = {
   enebaBannerAlt: "Eneba: ahorra en juegos y tarjetas de regalo",
   partnerBadge: "Aliado",
   didYouMeanLabel: "¿Quizá quisiste decir",
+  correctedResultsLabel: "Se muestran resultados de",
+  searchInsteadLabel: "Buscar, en cambio,",
 
   // --- Desplazamiento del catálogo ---
   loadingMoreLabel: "Cargando más productos…",

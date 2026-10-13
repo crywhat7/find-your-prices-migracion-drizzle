@@ -151,7 +151,7 @@ export function ProductSearchApp({
     getCatalogUrlServerSnapshot,
   );
 
-  const { query, store, category, sort, filters } = catalogUrl;
+  const { query, exact, store, category, sort, filters } = catalogUrl;
 
   /**
    * Categorías que de verdad viajan al servidor. Con alcance fijo y sin
@@ -176,7 +176,8 @@ export function ProductSearchApp({
   }, []);
 
   const setQuery = useCallback(
-    (value: string) => updateCatalog({ query: value }),
+    // Otra búsqueda vuelve a la corrección automática: "exact" era para la anterior.
+    (value: string) => updateCatalog({ query: value, exact: false }),
     [updateCatalog],
   );
   const setStore = useCallback(
@@ -317,6 +318,7 @@ export function ProductSearchApp({
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
     if (query.trim()) params.set("q", query.trim());
+    if (query.trim() && exact) params.set("exact", "1");
     for (const value of store) params.append("store", value);
     if (scopeStore) params.append("storeSlug", scopeStore);
     for (const value of effectiveCategory) params.append("category", value);
@@ -328,7 +330,7 @@ export function ProductSearchApp({
     params.set("sort", sort);
     if (locale) params.set("locale", locale);
     return params.toString();
-  }, [query, store, scopeStore, effectiveCategory, filters, sort, locale]);
+  }, [query, exact, store, scopeStore, effectiveCategory, filters, sort, locale]);
 
   /**
    * Si esta consulta es la que el servidor ya resolvió al pintar la página.
@@ -644,6 +646,31 @@ export function ProductSearchApp({
               </div>
             </div>
           </div>
+
+          {/* Como Google: la búsqueda no trajo nada y se muestran los resultados
+              de su corrección, con la salida a la búsqueda tal cual se escribió. */}
+          {remoteSearch && feed.correctedQuery && (
+            <div
+              role="status"
+              className="flex flex-col gap-0.5 rounded-2xl border border-[var(--border)] bg-[var(--bg-subtle)] px-4 py-3"
+              style={{ animation: "fyp-fade 260ms var(--ease-out-quart) both" }}
+            >
+              <p className="text-[0.9375rem] leading-[1.45] text-[var(--text)]">
+                {t("correctedResultsLabel")}{" "}
+                <strong className="font-semibold italic">{feed.correctedQuery}</strong>
+              </p>
+              <p className="text-[0.8125rem] leading-[1.45] text-[var(--text-secondary)]">
+                {t("searchInsteadLabel")}{" "}
+                <button
+                  type="button"
+                  onClick={() => updateCatalog({ exact: true })}
+                  className="rounded-sm text-[var(--accent)] underline-offset-[3px] outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                >
+                  {trimmedQuery}
+                </button>
+              </p>
+            </div>
+          )}
 
           {showWidened && (
             <div

@@ -578,6 +578,12 @@ export interface SearchCatalogParams {
   /** Solo estos artículos. Lo usan los populares de una categoría (0031). */
   ids?: string[];
   withTotal?: boolean;
+  /**
+   * Buscar exactamente lo escrito, sin corregir. Por defecto una búsqueda sin
+   * resultados se corrige sola ("televsor" → resultados de "televisor"), como
+   * Google; esto es su "Buscar, en cambio, televsor".
+   */
+  exact?: boolean;
 }
 
 export interface SearchCatalogResult {
@@ -588,9 +594,14 @@ export interface SearchCatalogResult {
    */
   total: number | null;
   /**
-   * "Quizá quisiste decir": la búsqueda con las palabras mal escritas
-   * corregidas. Solo cuando esta no trajo nada y la corregida sí, con los
-   * mismos filtros.
+   * La búsqueda no trajo nada y estos son los resultados de su corrección
+   * ("televsor" → "televisor"), con los mismos filtros. Las páginas
+   * siguientes se piden con esta búsqueda.
+   */
+  correctedQuery?: string;
+  /**
+   * "Quizá quisiste decir": la corrección, sin aplicar, de una búsqueda
+   * `exact` sin resultados. Solo si la corregida sí trae algo.
    */
   suggestion?: string;
 }
@@ -606,26 +617,39 @@ export async function searchCatalog(params: SearchCatalogParams): Promise<Search
   if (!hasDatabase()) return { products: [], total: 0 };
   const result = await withRetry('búsqueda en el catálogo', () => searchCatalogOnce(params));
   if (result.total !== 0 || (params.offset ?? 0) > 0 || !params.query?.trim()) return result;
-  const suggestion = await findSpellingSuggestion(params);
-  return suggestion ? { ...result, suggestion } : result;
+
+  // Sin resultados: casi siempre es un error de tipeo. Se busca la corrección
+  // con los mismos filtros y, si trae algo, se muestra eso directamente (o se
+  // ofrece, si se pidió la búsqueda exacta). Una corrección que también da
+  // cero no se ofrece: sería peor que nada.
+  const correction = await findSpellingCorrection(params.query);
+  if (!correction) return result;
+  try {
+    if (params.exact) {
+      const check = await searchCatalogOnce({ ...params, query: correction, limit: 1, withTotal: true });
+      return check.total ? { ...result, suggestion: correction } : result;
+    }
+    const corrected = await searchCatalogOnce({ ...params, query: correction });
+    return corrected.total ? { ...corrected, correctedQuery: correction } : result;
+  } catch {
+    return result;
+  }
 }
 
 /**
- * La corrección de una búsqueda sin resultados (`suggest_search_query`,
- * migración 0057), solo si trae algo con los mismos filtros: ofrecer una
- * corrección que también da cero es peor que no ofrecer nada.
+ * La búsqueda con las palabras mal escritas corregidas (`suggest_search_query`,
+ * migración 0057), o nada si no había qué corregir.
  *
- * Es un extra: si la función aún no existe o la base falla, no hay sugerencia
+ * Es un extra: si la función aún no existe o la base falla, no hay corrección
  * y la búsqueda sigue respondiendo su "sin resultados".
  */
-async function findSpellingSuggestion(params: SearchCatalogParams): Promise<string | undefined> {
-  const needle = normalizeText(params.query ?? '');
+async function findSpellingCorrection(query: string): Promise<string | undefined> {
+  const needle = normalizeText(query);
   if (needle.length < 3) return undefined;
   try {
     const { data, error } = await getSupabaseAdmin().rpc('suggest_search_query', { p_query: needle });
     if (error || typeof data !== 'string' || !data.trim() || data === needle) return undefined;
-    const check = await searchCatalogOnce({ ...params, query: data, offset: 0, limit: 1, withTotal: true });
-    return check.total ? data : undefined;
+    return data;
   } catch {
     return undefined;
   }
@@ -667,7 +691,7 @@ const searchCatalogMemoized = unstable_cache(
 export type NormalizedSearchParams = Required<
   Pick<
     SearchCatalogParams,
-    'sort' | 'limit' | 'offset' | 'locale' | 'withTotal' | 'onlyDiscounted' | 'includeUnavailable'
+    'sort' | 'limit' | 'offset' | 'locale' | 'withTotal' | 'onlyDiscounted' | 'includeUnavailable' | 'exact'
   >
 > &
   Pick<SearchCatalogParams, 'query' | 'minPrice' | 'maxPrice'> & {
@@ -709,6 +733,7 @@ export function normalizeSearchParams(params: SearchCatalogParams): NormalizedSe
     offset: Math.max(params.offset ?? 0, 0),
     locale: params.locale ?? 'es',
     withTotal: params.withTotal !== false,
+    exact: params.exact === true,
   };
 }
 

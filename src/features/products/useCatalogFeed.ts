@@ -61,8 +61,10 @@ interface FeedSnapshot {
   products: Product[];
   /** Total que cumple los filtros, no lo que se lleva cargado. */
   total: number;
-  /** "Quizá quisiste decir", si la búsqueda no trajo nada. */
+  /** "Quizá quisiste decir", si la búsqueda exacta no trajo nada. */
   suggestion?: string;
+  /** Búsqueda corregida cuyos resultados se muestran en lugar de los de la escrita. */
+  correctedQuery?: string;
 }
 
 export interface UseCatalogFeedOptions {
@@ -92,6 +94,12 @@ export interface CatalogFeed {
    * ("televsor" → "televisor"). La da el servidor; ver `searchCatalog`.
    */
   suggestion?: string;
+  /**
+   * La búsqueda no trajo nada y lo que se ve son los resultados de esta
+   * corrección ("Se muestran resultados de televisor"). La paginación sigue
+   * pidiendo la corregida.
+   */
+  correctedQuery?: string;
   /**
    * Lo que se ve es la respuesta a la consulta actual y no la anterior, que
    * sigue en pantalla mientras llega la nueva. Solo con esto un total de 0
@@ -202,6 +210,7 @@ export function useCatalogFeed({
           products: Array.isArray(payload.products) ? payload.products : [],
           total: typeof payload.total === "number" ? payload.total : 0,
           suggestion: typeof payload.suggestion === "string" ? payload.suggestion : undefined,
+          correctedQuery: typeof payload.correctedQuery === "string" ? payload.correctedQuery : undefined,
         });
         setStatus("idle");
       } catch {
@@ -239,6 +248,8 @@ export function useCatalogFeed({
 
       try {
         const params = new URLSearchParams(key);
+        // Lo que se ve son los resultados de la corrección: se sigue con ella.
+        if (settled.correctedQuery) params.set("q", settled.correctedQuery);
         params.set("limit", String(CATALOG_PAGE_SIZE));
         // El desplazamiento es cuántos artículos hay, no cuántas páginas van:
         // así no depende de que el servidor y el cliente usen el mismo tamaño.
@@ -261,6 +272,7 @@ export function useCatalogFeed({
             key,
             products: [...base, ...incoming.filter((product) => !seen.has(product.id))],
             total: typeof payload.total === "number" ? payload.total : settled.total,
+            correctedQuery: settled.correctedQuery,
           };
         });
         setStatus("idle");
@@ -317,6 +329,7 @@ export function useCatalogFeed({
     products,
     total,
     suggestion: settled?.suggestion,
+    correctedQuery: settled?.correctedQuery,
     isSettled: settled !== null,
     isSearching: status === "searching",
     isLoadingMore: status === "loadingMore",

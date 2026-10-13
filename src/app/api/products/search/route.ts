@@ -8,7 +8,7 @@ import {
 /**
  * GET /api/products/search
  *
- * Parámetros: q, store, storeSlug, category, brand, minPrice, maxPrice,
+ * Parámetros: q, exact, store, storeSlug, category, brand, minPrice, maxPrice,
  * onlyDiscounted, includeUnavailable, sort, limit, offset, locale. `store`,
  * `storeSlug`, `category` y `brand` se pueden repetir (`store=A&store=B`) y se
  * combinan con OR. `storeSlug` es el alcance fijo de una landing de tienda.
@@ -72,7 +72,7 @@ export async function GET(request: Request): Promise<Response> {
   const offset = numericParam(url.searchParams.get("offset")) ?? 0;
 
   try {
-    const { products, total, suggestion } = await searchCatalogCached({
+    const { products, total, suggestion, correctedQuery } = await searchCatalogCached({
       query: param("q"),
       store: listParam("store"),
       storeSlug: listParam("storeSlug"),
@@ -90,10 +90,11 @@ export async function GET(request: Request): Promise<Response> {
       limit: numericParam(url.searchParams.get("limit")) ?? 60,
       offset,
       withTotal: offset === 0,
+      exact: url.searchParams.get("exact") === "1",
     });
 
     return Response.json(
-      { ok: true, products, total, ...(suggestion ? { suggestion } : {}) },
+      { ok: true, products, total, ...(suggestion ? { suggestion } : {}), ...(correctedQuery ? { correctedQuery } : {}) },
       { headers: { "Cache-Control": CACHE_CONTROL } },
     );
   } catch (error) {

@@ -111,6 +111,8 @@ export type DictionaryKey =
   | "enebaBannerAlt"
   | "partnerBadge"
   | "didYouMeanLabel"
+  | "correctedResultsLabel"
+  | "searchInsteadLabel"
   | "loadingMoreLabel"
   | "feedErrorLabel"
   | "searchErrorLabel"

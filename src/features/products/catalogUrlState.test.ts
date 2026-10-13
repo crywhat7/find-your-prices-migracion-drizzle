@@ -84,6 +84,7 @@ describe("ida y vuelta", () => {
   it("un catálogo con todo puesto sobrevive el viaje entero", () => {
     const state: CatalogUrlState = {
       query: "audífonos inalámbricos",
+      exact: true,
       store: ["Walmart Honduras", "Diunsa"],
       category: ["Audio y Video"],
       sort: "price-asc",
@@ -97,6 +98,12 @@ describe("ida y vuelta", () => {
     };
 
     expect(parseCatalogUrl(catalogUrlSearch(state))).toEqual(state);
+  });
+
+  it("`exact` solo viaja con una búsqueda: sin texto no hay nada que no corregir", () => {
+    expect(catalogUrlSearch({ ...EMPTY_CATALOG_URL_STATE, query: "televsor", exact: true })).toBe("?q=televsor&exact=1");
+    expect(catalogUrlSearch({ ...EMPTY_CATALOG_URL_STATE, exact: true })).toBe("");
+    expect(parseCatalogUrl("?q=tv").exact).toBe(false);
   });
 
   it("el espacio final de lo tecleado no se pierde: el campo se lee de vuelta desde la URL, y recortarlo acá lo borraría mientras se escribe", () => {

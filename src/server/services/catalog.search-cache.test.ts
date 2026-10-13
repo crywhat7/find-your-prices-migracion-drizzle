@@ -79,6 +79,7 @@ describe("normalizeSearchParams", () => {
       { query: "tv", offset: 60 },
       { query: "tv", locale: "en" as const },
       { query: "tv", withTotal: false },
+      { query: "tv", exact: true },
     ]) {
       expect(normalizeSearchParams(variant)).not.toEqual(base);
     }

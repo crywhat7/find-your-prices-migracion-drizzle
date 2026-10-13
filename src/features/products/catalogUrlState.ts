@@ -20,6 +20,12 @@ import { DEFAULT_SORT, isSortOption, type SortOption } from "./sortProducts";
 export interface CatalogUrlState {
   query: string;
   /**
+   * Buscar exactamente `query`, sin la corrección automática de una búsqueda
+   * sin resultados (el "Buscar, en cambio, ..." de Google). Escribir otra
+   * búsqueda lo apaga.
+   */
+  exact: boolean;
+  /**
    * Tiendas y categorías elegidas. Vacío es "todas"; varias se combinan con
    * OR dentro de la faceta y con AND entre facetas. En la URL viajan como
    * parámetro repetido (`store=A&store=B`), que es lo que `URLSearchParams`
@@ -35,6 +41,7 @@ export interface CatalogUrlState {
 /** Portada limpia: ni búsqueda, ni facetas, ni orden elegido a mano. */
 export const EMPTY_CATALOG_URL_STATE: CatalogUrlState = {
   query: "",
+  exact: false,
   store: [],
   category: [],
   sort: DEFAULT_SORT,
@@ -77,6 +84,7 @@ export function parseCatalogUrl(search: string): CatalogUrlState {
 
   return {
     query: params.get("q") ?? "",
+    exact: params.get("exact") === "1",
     store: list(params, "store"),
     category: list(params, "category"),
     sort: rawSort && isSortOption(rawSort) ? rawSort : DEFAULT_SORT,
@@ -106,6 +114,7 @@ export function catalogUrlSearch(state: CatalogUrlState): string {
   // Recortarla acá haría que el campo perdiera el espacio final mientras se
   // escribe, porque lo que se ve sale de vuelta de la URL.
   if (state.query.trim()) params.set("q", state.query);
+  if (state.query.trim() && state.exact) params.set("exact", "1");
   for (const store of state.store) params.append("store", store);
   for (const category of state.category) params.append("category", category);
   for (const brand of state.filters.brand) params.append("brand", brand);
