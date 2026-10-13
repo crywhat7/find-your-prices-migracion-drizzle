@@ -34,6 +34,8 @@ const COPY = {
     related: "Artículos parecidos",
     ad: "Publicidad",
     lastChecked: "Último chequeo",
+    approxHnl: "Aprox.",
+    rateNote: "al tipo de cambio de referencia",
     unchangedFor: "Sin cambio de precio hace",
     days: "días",
     today: "hoy",
@@ -77,6 +79,8 @@ const COPY = {
     related: "Similar items",
     ad: "Advertisement",
     lastChecked: "Last checked",
+    approxHnl: "Approx.",
+    rateNote: "at the reference exchange rate",
     unchangedFor: "Price unchanged for",
     days: "days",
     today: "today",
@@ -247,6 +251,21 @@ export function ProductDetailView({ product, related, locale }: ProductDetailVie
                 </span>
               )}
             </div>
+
+            {/* Tiendas que cobran en otra moneda (Eneba, en dólares): el
+                equivalente en lempiras, para comparar sin sacar la cuenta. */}
+            {product.priceInHnl && (
+              <p
+                className="mt-2 text-[0.9375rem] tabular-nums text-[var(--text-secondary)]"
+                title={`1 ${product.currency} = ${formatPrice(product.priceInHnl.rate, "HNL", priceLocale)}`}
+              >
+                {copy.approxHnl}{" "}
+                <span className="font-semibold text-[var(--text)]">
+                  {formatPrice(product.priceInHnl.amount, "HNL", priceLocale)}
+                </span>{" "}
+                <span className="text-[0.8125rem] text-[var(--text-tertiary)]">{copy.rateNote}</span>
+              </p>
+            )}
 
             {hasDiscount && (
               <p className="mt-2 inline-flex items-center gap-2 rounded-full bg-[var(--price-win-soft)] px-3 py-1 text-[0.8125rem] font-medium text-[var(--price-win)] tabular-nums">

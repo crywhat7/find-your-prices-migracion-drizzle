@@ -151,6 +151,22 @@ let categoryColumnsPublished = true;
  */
 const NEWEST_COLUMN = 'first_seen_at';
 
+/**
+ * Precio de referencia en lempiras (migración 0054). El catálogo es
+ * multimoneda —Eneba publica en dólares— y ordenar o filtrar por `price`
+ * mezclaría L 300 con US$ 15. La tarjeta sigue mostrando `price` en su
+ * moneda; esto solo decide el orden y el filtro de precio.
+ *
+ * Mismo cuidado que con `public_slug`: si la vista aún no la publica, se
+ * vuelve a `price` y el catálogo sigue en pie.
+ */
+const REFERENCE_PRICE_COLUMN = 'price_hnl';
+let referencePricePublished = true;
+
+function priceColumn(): string {
+  return referencePricePublished ? REFERENCE_PRICE_COLUMN : 'price';
+}
+
 /** Etiquetas de disponibilidad por idioma. El componente solo pinta el texto. */
 const AVAILABILITY_LABELS: Record<'es' | 'en', Partial<Record<AvailabilityStatus, string>>> = {
   es: {
@@ -650,21 +666,23 @@ export function normalizeSearchParams(params: SearchCatalogParams): NormalizedSe
 }
 
 async function searchCatalogOnce(params: SearchCatalogParams): Promise<SearchCatalogResult> {
-  // Hasta cinco pasadas: la buena, una si falta la materializada, y una por
+  // Hasta seis pasadas: la buena, una si falta la materializada, y una por
   // cada columna que la vista pueda no tener todavía. Cada reintento apaga
   // exactamente lo que faltó, así que el catálogo degrada por partes —sin
   // materializada, sin orden por novedad, sin enlace a la ficha, o sin
   // categoría canónica— en vez de caerse entero.
   let newestColumn = NEWEST_COLUMN;
 
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const published = `${catalogSource}${slugColumnPublished}${categoryColumnsPublished}`;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const flags = () =>
+      `${catalogSource}${slugColumnPublished}${categoryColumnsPublished}${referencePricePublished}`;
+    const published = flags();
     const result = await runCatalogQuery(params, newestColumn);
     if (result !== null) return result;
 
     // `null` significa "falta algo". Qué, lo dice la bandera que la propia
     // consulta acaba de cambiar; si ninguna cambió, fue la columna de novedad.
-    if (published !== `${catalogSource}${slugColumnPublished}${categoryColumnsPublished}`) continue;
+    if (published !== flags()) continue;
     newestColumn = 'last_seen_at';
   }
 
@@ -820,8 +838,8 @@ async function runCatalogQuery(
     request = applyCategoryFacet(request, params.category);
     request = applyFacet(request, 'store_category_name', params.storeCategory);
     request = applyFacet(request, 'brand', params.brand);
-    if (params.minPrice !== undefined) request = request.gte('price', params.minPrice);
-    if (params.maxPrice !== undefined) request = request.lte('price', params.maxPrice);
+    if (params.minPrice !== undefined) request = request.gte(priceColumn(), params.minPrice);
+    if (params.maxPrice !== undefined) request = request.lte(priceColumn(), params.maxPrice);
     if (params.onlyDiscounted) request = request.not('list_price', 'is', null);
     if (!params.includeUnavailable) request = applyAvailabilityFloor(request);
     if (head) return request;
@@ -833,10 +851,11 @@ async function runCatalogQuery(
         request = request.order(newestColumn, { ascending: false, nullsFirst: false });
         break;
       case 'price-asc':
-        request = request.order('price', { ascending: true });
+        // Sin tasa para su moneda, price_hnl es null: al final, en los dos sentidos.
+        request = request.order(priceColumn(), { ascending: true, nullsFirst: false });
         break;
       case 'price-desc':
-        request = request.order('price', { ascending: false });
+        request = request.order(priceColumn(), { ascending: false, nullsFirst: false });
         break;
       case 'name-asc':
         request = request.order('name', { ascending: true });
@@ -884,6 +903,10 @@ async function runCatalogQuery(
     }
     if (categoryColumnsPublished && message.includes(CATEGORY_NAME_COLUMN)) {
       categoryColumnsPublished = false;
+      return null;
+    }
+    if (referencePricePublished && message.includes(REFERENCE_PRICE_COLUMN)) {
+      referencePricePublished = false;
       return null;
     }
 
@@ -1188,6 +1211,11 @@ export interface ProductDetail extends Product {
   attributes: Record<string, unknown>;
   badges: string[];
   priceHistory: PricePointRow[];
+  /**
+   * El precio en lempiras, solo cuando la tienda cobra en otra moneda (Eneba,
+   * en dólares). Aproximado: usa la tasa de `exchange_rates` (0054).
+   */
+  priceInHnl?: { amount: number; rate: number };
   firstSeenAt: string;
   lastSeenAt: string;
   lastPriceChangeAt?: string;
@@ -1268,6 +1296,22 @@ export async function getProductDetail(
     const observedPrices = priceHistory
       .map((point) => point.price)
       .filter((price): price is number => price !== null);
+
+    // Equivalente en lempiras para precios en otra moneda. Si la tasa no está
+    // (o 0054 no corrió), la ficha solo muestra el precio original.
+    let priceInHnl: ProductDetail['priceInHnl'];
+    const currency = String(row.currency ?? 'HNL');
+    if (currency !== 'HNL' && row.price !== null && row.price !== undefined) {
+      const { data: rate } = await db
+        .from('exchange_rates')
+        .select('rate_to_hnl')
+        .eq('currency', currency)
+        .maybeSingle();
+      const value = Number(rate?.rate_to_hnl);
+      if (Number.isFinite(value) && value > 0) {
+        priceInHnl = { amount: Math.round(Number(row.price) * value * 100) / 100, rate: value };
+      }
+    }
 
     // La galería vive en la columna `images` (0026): ya viene ordenada y la
     // primera es la principal.
@@ -1358,6 +1402,7 @@ export async function getProductDetail(
       attributes: (row.attributes as Record<string, unknown>) ?? {},
       badges: (row.badges as string[] | null) ?? [],
       priceHistory,
+      priceInHnl,
       firstSeenAt: String(row.first_seen_at),
       lastSeenAt: String(row.last_seen_at),
       lastPriceChangeAt,

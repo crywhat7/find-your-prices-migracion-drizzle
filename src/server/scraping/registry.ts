@@ -21,6 +21,7 @@ import { officedepotStrategy } from './strategies/officedepot';
 import { paperdepotStrategy } from './strategies/paperdepot';
 import { priveStrategy } from './strategies/prive';
 import { zaraStrategy } from './strategies/zara';
+import { enebaStrategy } from './strategies/eneba';
 
 /**
  * Registro de estrategias.
@@ -55,6 +56,8 @@ const STRATEGIES: ScrapeStrategy[] = [
   paperdepotStrategy,
   priveStrategy,
   zaraStrategy,
+  // Aliado: no scrapea, se carga por CSV con `npm run eneba:import`.
+  enebaStrategy,
   // Proximas: lacuracao, supermercados...
 ];
 
