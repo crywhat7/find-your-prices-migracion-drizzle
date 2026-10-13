@@ -37,6 +37,8 @@ SQL Editor de Supabase. Son idempotentes: volver a correrlos no rompe nada.
 | 0049 | `0049_affiliate_applications.sql` | Solicitudes de afiliación que dejan las tiendas en `/aliados` (estado `new` → `contacted` → `accepted`/`rejected`, notas internas). Cerrada a las llaves públicas; se atiende en `/admin/aliados`. |
 | 0050 | `0050_analytics_bots.sql` | `is_bot` y `bot_name` en `page_views` y `affiliate_click_events`. Los bots los registra `src/proxy.ts` en el servidor; `analytics_report`/`analytics_totals` reciben `p_include_bots` (por defecto `false`) y el reporte trae `botViews` y el desglose `bots`. |
 | 0051 | `0051_error_log_and_category_counts.sql` | `admin_store_category_counts()` desde `mv_catalog` (reemplaza a `v_catalog_category_facets` en `/admin/categorias`, que agrupaba todo `store_products` y pasaba el límite de 8 s), y la bitácora `error_logs` con `admin_error_groups()` para `/admin/errores` y `purge_old_errors()` (90 días). |
+| 0052 | `0052_eneba_partner.sql` | Activa a Eneba en la sección de aliados: enlace de afiliado (`?af_id=findyourprices`) y logo (`public/images/partners/eneba.svg`, versión de texto oscuro). |
+| 0053 | `0053_eneba_promo_code.sql` | Código de descuento de Eneba: `findyourprices` (5%), con texto en español e inglés. |
 | 0039 | `0039_protect_categories.sql` | Candado: `BEFORE DELETE/TRUNCATE` en `categories` y `category_content` aborta salvo que la transacción ponga `find_your_prices.allow_delete = on`. El panel borra vía `delete_category(uuid)`, que abre el candado solo en su transacción. |
 
 > **Paso obligatorio después de 0010:** en Supabase, `Settings → API → Exposed

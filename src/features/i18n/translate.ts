@@ -107,6 +107,8 @@ export type DictionaryKey =
   | "compareAttrRating"
   | "resultsListLabel"
   | "adLabel"
+  | "partnerBannerLabel"
+  | "enebaBannerAlt"
   | "loadingMoreLabel"
   | "feedErrorLabel"
   | "searchErrorLabel"

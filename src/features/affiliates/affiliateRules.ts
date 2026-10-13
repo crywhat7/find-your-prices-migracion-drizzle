@@ -24,6 +24,9 @@ export function partnerOutboundPath(slug: string, offerId?: string): string {
 /** `rel` de todo enlace de afiliado: Google pide `sponsored` para estos. */
 export const AFFILIATE_LINK_REL = "sponsored nofollow noopener";
 
+/** Enlace de afiliado de Eneba, el que usan el banner y el pop-up sin pasar por `/go/eneba`. */
+export const ENEBA_AFFILIATE_URL = "https://www.eneba.com/?af_id=findyourprices";
+
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 export function isValidSlug(value: string): boolean {
