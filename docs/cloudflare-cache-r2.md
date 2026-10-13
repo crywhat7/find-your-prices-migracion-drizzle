@@ -167,6 +167,37 @@ Y en **Workers → (el Worker) → Metrics**, en las horas siguientes, los error
 
 ---
 
+## Paso 6 — Variables en el build (obligatorio desde el 13-oct-2026)
+
+Cloudflare tiene **dos** lugares para variables y no se comparten:
+
+- **Settings → Variables and Secrets**: las usa el Worker cuando atiende
+  visitas. Estas ya estaban.
+- **Settings → Build → Variables and secrets**: las usa el *build*. Acá
+  faltaban.
+
+Next arma la portada, `/categorias` y `/tiendas` durante el build, y el deploy
+sube esas páginas a la caché de R2. Sin las variables de Supabase en el build,
+salieron armadas sin base: la portada con productos de ejemplo ("Wireless
+Mouse", Amazon) y `/tiendas` con "0 artículos de 0 tiendas", y la caché las
+sirvió a todos hasta que vencieron. Se arregló a mano invalidando la caché.
+
+En **Settings → Build → Variables and secrets** agregar, con los mismos valores
+que tienen las variables del Worker:
+
+| Variable | Tipo |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | texto |
+| `NEXT_PUBLIC_SITE_URL` | texto (`https://findyourprices.com`) |
+| `SUPABASE_SECRET_KEY` | **secreto** |
+
+Desde el commit que sigue a este paso, un build sin `NEXT_PUBLIC_SUPABASE_URL`
+**falla a propósito** (mensaje: *Falta NEXT_PUBLIC_SUPABASE_URL en un build de
+producción*). Si un deploy falla con ese mensaje, producción sigue con la
+versión anterior: solo hay que agregar la variable de arriba y reintentar.
+
+---
+
 ## Recomendado (cuesta US$5/mes)
 
 El plan **Workers Paid** sube el techo de CPU de 10 ms a 30 s por petición y el
