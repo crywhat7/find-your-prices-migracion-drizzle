@@ -179,6 +179,16 @@ const REGION_RANK_COLUMN = 'region_rank';
 let regionRankPublished = true;
 
 /**
+ * Lo destacado a mano (migración 0057): se ordena justo después de la región.
+ * El CSV de Eneba no trae descuento ni ventas, y sin esto el desempate era el
+ * slug —orden alfabético—, con miles de vouchers cripto delante de Steam Wallet
+ * o Roblox. La lista vive en `catalog_featured_terms`, no acá. Mismo cuidado
+ * que con `region_rank` si la vista aún no la publica.
+ */
+const FEATURED_RANK_COLUMN = 'featured_rank';
+let featuredRankPublished = true;
+
+/**
  * Órdenes que respetan el nivel de región antes que su propia clave. Los de
  * precio y nombre no: quien pide "menor precio" ve lo más barato.
  */
@@ -738,16 +748,16 @@ export function normalizeSearchParams(params: SearchCatalogParams): NormalizedSe
 }
 
 async function searchCatalogOnce(params: SearchCatalogParams): Promise<SearchCatalogResult> {
-  // Hasta seis pasadas: la buena, una si falta la materializada, y una por
+  // Hasta ocho pasadas: la buena, una si falta la materializada, y una por
   // cada columna que la vista pueda no tener todavía. Cada reintento apaga
   // exactamente lo que faltó, así que el catálogo degrada por partes —sin
   // materializada, sin orden por novedad, sin enlace a la ficha, o sin
   // categoría canónica— en vez de caerse entero.
   let newestColumn = NEWEST_COLUMN;
 
-  for (let attempt = 0; attempt < 7; attempt += 1) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
     const flags = () =>
-      `${catalogSource}${slugColumnPublished}${categoryColumnsPublished}${referencePricePublished}${regionRankPublished}`;
+      `${catalogSource}${slugColumnPublished}${categoryColumnsPublished}${referencePricePublished}${regionRankPublished}${featuredRankPublished}`;
     const published = flags();
     const result = await runCatalogQuery(params, newestColumn);
     if (result !== null) return result;
@@ -837,6 +847,12 @@ function toNamePrefix(raw: string | undefined): string | null {
  */
 const PREFIX_FIRST_SORTS: ReadonlySet<CatalogSort> = new Set(['newest', 'relevance']);
 
+/** Una porción de la lista: por dónde cae lo escrito y por región. Sin campos, es toda. */
+interface QueryLayer {
+  text?: 'prefix' | 'rest';
+  region?: 'primary' | 'other';
+}
+
 /**
  * Una pasada de la consulta. Devuelve `null` —y solo `null`— cuando falta una
  * columna que la vista no publica todavía, que es la única condición que vale
@@ -882,13 +898,27 @@ async function runCatalogQuery(
     PREFIX_FIRST_SORTS.has(params.sort ?? 'discount') &&
     !(params.ids && params.ids.length > 0);
 
+  // Con un orden que respeta la región, cada capa de texto se parte en dos
+  // —región que sirve en Honduras y las demás— y las cuatro van en fila:
+  // sin esto, una clave de Turquía que EMPIEZA por "xbox" saldría antes que
+  // una GLOBAL que lo trae en medio del nombre.
+  const regionFirst = regionRankPublished && REGION_FIRST_SORTS.has(params.sort ?? 'discount');
+  const layers: QueryLayer[] = regionFirst
+    ? [
+        { text: 'prefix', region: 'primary' },
+        { text: 'rest', region: 'primary' },
+        { text: 'prefix', region: 'other' },
+        { text: 'rest', region: 'other' },
+      ]
+    : [{ text: 'prefix' }, { text: 'rest' }];
+
   /**
    * La consulta con todos los filtros y el orden puestos. `layer` acota a una
-   * de las dos capas; `all` es la lista entera. Con `head` sólo se pide la
-   * cuenta, sin filas ni orden.
+   * capa; sin `text` es la lista entera. Con `head` sólo se pide la cuenta,
+   * sin filas ni orden.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const build = (layer: 'prefix' | 'rest' | 'all', count: boolean, head = false): any => {
+  const build = (layer: QueryLayer, count: boolean, head = false): any => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let request: any = getSupabaseAdmin()
       .from(catalogSource)
@@ -901,8 +931,10 @@ async function runCatalogQuery(
       request = request.textSearch('normalized_name', tsquery, { config: 'simple' });
     }
     // El prefijo sólo tiene [a-z0-9 ], así que no hay comodines que escapar.
-    if (layer === 'prefix') request = request.like('normalized_name', `${prefix}%`);
-    if (layer === 'rest') request = request.not('normalized_name', 'like', `${prefix}%`);
+    if (layer.text === 'prefix') request = request.like('normalized_name', `${prefix}%`);
+    if (layer.text === 'rest') request = request.not('normalized_name', 'like', `${prefix}%`);
+    if (layer.region === 'primary') request = request.eq(REGION_RANK_COLUMN, 0);
+    if (layer.region === 'other') request = request.gt(REGION_RANK_COLUMN, 0);
 
     if (params.ids && params.ids.length > 0) request = request.in('id', params.ids);
     request = applyFacet(request, 'store_name', params.store);
@@ -918,6 +950,7 @@ async function runCatalogQuery(
 
     if (regionRankPublished && REGION_FIRST_SORTS.has(params.sort ?? 'discount')) {
       request = request.order(REGION_RANK_COLUMN, { ascending: true });
+      if (featuredRankPublished) request = request.order(FEATURED_RANK_COLUMN, { ascending: true });
     }
 
     switch (params.sort) {
@@ -989,6 +1022,10 @@ async function runCatalogQuery(
       regionRankPublished = false;
       return null;
     }
+    if (featuredRankPublished && message.includes(FEATURED_RANK_COLUMN)) {
+      featuredRankPublished = false;
+      return null;
+    }
 
     const missingNewest = undefinedColumn || message.includes(newestColumn);
     if (missingNewest && params.sort === 'newest') return null;
@@ -997,7 +1034,7 @@ async function runCatalogQuery(
 
   try {
     if (!layered) {
-      const result = await execute(build('all', withTotal).range(offset, offset + limit - 1));
+      const result = await execute(build({}, withTotal).range(offset, offset + limit - 1));
       if (result === null) return null;
       return {
         products: result.rows.map((row) => toProduct(row, locale)),
@@ -1005,42 +1042,33 @@ async function runCatalogQuery(
       };
     }
 
-    // Cuántos empiezan por lo escrito: es la frontera entre las dos capas y
-    // lo que decide de cuál sale cada página. Sólo la cuenta, sin filas.
-    const boundary = await execute(build('prefix', true, true));
-    if (boundary === null) return null;
-    const prefixCount = boundary.count ?? 0;
-
+    // Las capas se recorren en fila como una sola lista. De cada una se pide a
+    // la vez la página que le toca y su cuenta: la cuenta es lo que dice
+    // cuántos artículos hay que saltar en la siguiente. Llena la página, las
+    // que quedan sólo se cuentan (y sólo si hace falta el total).
     const rows: CatalogRow[] = [];
-    let restCount: number | null = null;
+    let total = 0;
+    let skip = offset;
 
-    if (offset < prefixCount) {
-      const first = await execute(build('prefix', false).range(offset, offset + limit - 1));
-      if (first === null) return null;
-      rows.push(...first.rows);
-    }
-
-    // Lo que falte para llenar la página sale de la otra capa, empezando
-    // donde la página anterior la dejó. Si no falta nada, el total sigue
-    // necesitando la cuenta de esa capa, sin filas.
-    const missing = limit - rows.length;
-    const restOffset = Math.max(offset - prefixCount, 0);
-    if (missing > 0) {
-      const second = await execute(
-        build('rest', withTotal).range(restOffset, restOffset + missing - 1),
-      );
-      if (second === null) return null;
-      rows.push(...second.rows);
-      restCount = second.count;
-    } else if (withTotal) {
-      const tail = await execute(build('rest', true, true));
-      if (tail === null) return null;
-      restCount = tail.count;
+    for (const layer of layers) {
+      const missing = limit - rows.length;
+      if (missing > 0) {
+        const result = await execute(build(layer, true).range(skip, skip + missing - 1));
+        if (result === null) return null;
+        rows.push(...result.rows);
+        const layerCount = result.count ?? 0;
+        total += layerCount;
+        skip = Math.max(skip - layerCount, 0);
+      } else if (withTotal) {
+        const tail = await execute(build(layer, true, true));
+        if (tail === null) return null;
+        total += tail.count ?? 0;
+      }
     }
 
     return {
       products: rows.map((row) => toProduct(row, locale)),
-      total: withTotal ? prefixCount + (restCount ?? 0) : null,
+      total: withTotal ? total : null,
     };
   } catch (error) {
     // Antes esto devolvía un catálogo vacío. Ver `withRetry` para por qué
