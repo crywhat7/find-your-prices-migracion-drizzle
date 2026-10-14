@@ -215,6 +215,19 @@
   }
 }
 
+/* Safari en iOS hace zoom al enfocar un campo con letra menor a 16px y no lo
+ * deshace al salir: la página queda ampliada y cortada a los lados. En
+ * pantallas táctiles los campos van a 16px. Sin capa a propósito, para ganarle
+ * a los `text-[…]` de cada componente. No se usa `maximum-scale=1` en el
+ * viewport porque en Android eso además bloquea el zoom con dos dedos. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 /* ---------------------------------------------------------------------------
  * <select> — el desplegable, y por qué se ve distinto en Windows
  * ---------------------------------------------------------------------------
