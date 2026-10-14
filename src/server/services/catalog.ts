@@ -169,8 +169,8 @@ function priceColumn(): string {
 }
 
 /**
- * Qué tan seguro es que el artículo sirva en Honduras (migración 0056): 0 sin
- * región o GLOBAL, 1 LATAM / EE. UU., 2 cualquier otra región. Eneba vende la
+ * Si el artículo suele servir en Honduras (migración 0056): 0 sin región,
+ * GLOBAL, LATAM o UNITED STATES; 1 cualquier otra región. Eneba vende la
  * misma clave por región y la de Brasil o Turquía, que casi nunca se puede
  * canjear acá, suele ser la más barata: sin esto, buscar "vbucks" las ponía
  * arriba. Mismo cuidado que con `price_hnl` si la vista aún no la publica.

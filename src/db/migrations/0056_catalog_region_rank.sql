@@ -1,6 +1,6 @@
 -- =============================================================================
 -- 0056_catalog_region_rank.sql
--- Las claves que funcionan desde Honduras van primero.
+-- Las claves de Global, LATAM y United States van primero.
 --
 -- Por qué. Eneba (0055) vende la misma clave por región: "Fortnite ... V-Bucks
 -- XBOX LIVE Key BRAZIL", "... MEXICO", "... TURKEY". Una clave de otra región
@@ -12,13 +12,11 @@
 --   - `region`: la región del artículo tal como la guarda la importación en
 --     `store_products.attributes->>'region'` ("Global", "United States"...).
 --     Null en las tiendas hondureñas, que no venden por región.
---   - `region_rank`: qué tan seguro es que sirva en Honduras.
---       0  sin región (todo lo que no es una clave) y GLOBAL o ROW (resto del
---          mundo, que incluye a Honduras).
---       1  regiones que suelen cubrir a Honduras o que se canjean en cuentas
---          de EE. UU., que es lo que usa mucha gente acá: LATAM, NORTH
---          AMERICA, UNITED STATES, AMERICAS.
---       2  cualquier otra región (Brasil, Turquía, Europa...).
+--   - `region_rank`: si la clave suele servir en Honduras.
+--       0  sin región (todo lo que no es una clave), GLOBAL, LATAM y UNITED
+--          STATES. Entre estas tres no hay preferencia: salen mezcladas según
+--          el orden elegido.
+--       1  cualquier otra región (Brasil, Turquía, Europa, ROW...).
 --
 -- El catálogo ordena primero por `region_rank` y después por lo que se haya
 -- elegido (salvo en los órdenes por precio y por nombre, que se respetan tal
@@ -119,9 +117,8 @@ select
   nullif(sp.attributes->>'region', '') as region,
   case
     when coalesce(sp.attributes->>'region', '') = '' then 0
-    when lower(replace(sp.attributes->>'region', ' ', '_')) in ('global', 'row') then 0
-    when lower(replace(sp.attributes->>'region', ' ', '_')) in ('latam', 'north_america', 'united_states', 'americas') then 1
-    else 2
+    when lower(replace(sp.attributes->>'region', ' ', '_')) in ('global', 'latam', 'united_states') then 0
+    else 1
   end::smallint     as region_rank
 from find_your_prices.store_products sp
 join find_your_prices.stores s on s.id = sp.store_id
@@ -143,7 +140,7 @@ comment on column find_your_prices.mv_catalog.region is
   'Region de la clave (attributes.region, p. ej. "Global"). Null en lo que no se vende por region.';
 
 comment on column find_your_prices.mv_catalog.region_rank is
-  '0 = sirve en Honduras (sin region, GLOBAL, ROW); 1 = suele servir (LATAM, NORTH AMERICA, UNITED STATES, AMERICAS); 2 = otra region. El catalogo ordena por esto primero (0056).';
+  '0 = sin region, GLOBAL, LATAM o UNITED STATES; 1 = cualquier otra region. El catalogo ordena por esto primero (0056).';
 
 -- Índices de 0054, más los dos órdenes por defecto precedidos de region_rank.
 create unique index if not exists mv_catalog_id_key
@@ -261,7 +258,7 @@ grant select on find_your_prices.v_catalog_summary               to anon, authen
 grant select on find_your_prices.v_catalog_store_category_facets to anon, authenticated, service_role;
 
 -- -----------------------------------------------------------------------------
--- 4. Reporte: artículos por nivel de región (el 2 debería ser solo de Eneba).
+-- 4. Reporte: artículos por nivel de región (el 1 debería ser solo de Eneba).
 -- -----------------------------------------------------------------------------
 select m.region_rank, m.store_slug, count(*) as articulos
 from find_your_prices.mv_catalog m
