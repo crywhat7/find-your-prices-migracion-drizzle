@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { SHELL } from "@/components/layout/shell";
+import { ProductImage } from "@/components/shared/ProductImage";
 import { MAX_COMPARE_ITEMS } from "@/features/products/compareTray";
 import type { Product } from "@/types";
 
@@ -116,19 +117,7 @@ export function CompareTrayDock({
           {items.map((product) => (
             <div key={product.id} className="relative shrink-0 snap-start">
               <div className="h-12 w-12 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] sm:h-14 sm:w-14">
-                {product.imageUrl ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={product.imageUrl}
-                    alt={product.name}
-                    loading="lazy"
-                    className="h-full w-full object-contain p-1"
-                  />
-                ) : (
-                  <span className="flex h-full w-full items-center justify-center px-1 text-center text-[0.5625rem] leading-tight text-[var(--text-tertiary)]">
-                    {product.name.slice(0, 18)}
-                  </span>
-                )}
+                <ProductImage src={product.imageUrl} alt={product.name} className="h-full w-full object-contain p-1" />
               </div>
 
               {/* Medía 20px, por debajo del mínimo táctil de 24px, y esto

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { SHELL } from "@/components/layout/shell";
+import { ProductImage } from "@/components/shared/ProductImage";
 import { routeFor } from "@/features/i18n/routes";
 import type { Locale } from "@/features/i18n/translate";
 import { productPath } from "@/features/products/productPath";
@@ -742,10 +743,7 @@ function QuoteRow({
     <li className={`grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-4 gap-y-3 py-5 sm:grid-cols-[4rem_minmax(0,1fr)_auto] print:grid-cols-[2.75rem_minmax(0,1fr)_auto] print:py-3 ${item.unavailable ? "opacity-70" : ""}`}>
       {/* Foto: placa blanca como en las tarjetas del catálogo. */}
       <div className="aspect-square w-full overflow-hidden rounded-xl bg-white">
-        {offer.imageUrl ? (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={offer.imageUrl} alt="" loading="lazy" className="h-full w-full object-contain p-1.5" />
-        ) : null}
+        <ProductImage src={offer.imageUrl} alt="" className="h-full w-full object-contain p-1.5" />
       </div>
 
       <div className="min-w-0">

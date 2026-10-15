@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ProductImage } from "@/components/shared/ProductImage";
 import type { Product } from "@/types";
 import { formatPrice } from "@/lib/format";
 import type { CompareToggleLabels } from "./CompareToggle";
@@ -76,34 +77,11 @@ export function ProductTile({
             tienda vienen con fondo blanco, y sobre una placa gris ese
             fondo se ve como un cuadro pegado dentro de otro. */}
         <div data-fyp-piece className="relative aspect-square w-full overflow-hidden rounded-2xl bg-white transition-[box-shadow] duration-[var(--dur-base)] ease-[var(--ease-out-quart)] group-hover:shadow-[var(--shadow-md)]">
-          {imageUrl ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              src={imageUrl}
-              alt={name}
-              loading="lazy"
-              className="h-full w-full object-contain p-4 transition-transform duration-[var(--dur-slow)] ease-[var(--ease-out-expo)] group-hover:scale-[1.04]"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center">
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                // Color fijo: la placa es blanca en los dos temas, y el gris
-                // del tema oscuro no se vería sobre ella.
-                className="h-8 w-8 text-neutral-400"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.3"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M3 16.5V7.5a1.5 1.5 0 0 1 1.5-1.5h15A1.5 1.5 0 0 1 21 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5Z M3 16.5 8.25 11l3 3 3.75-4.5L21 15"
-                />
-              </svg>
-            </div>
-          )}
+          <ProductImage
+            src={imageUrl}
+            alt={name}
+            className="h-full w-full object-contain p-4 transition-transform duration-[var(--dur-slow)] ease-[var(--ease-out-expo)] group-hover:scale-[1.04]"
+          />
 
           {hasDiscount && discountPercent !== undefined && (
             <span className="absolute top-2.5 left-2.5 rounded-full bg-[var(--price-win)] px-2 py-0.5 text-[0.6875rem] font-semibold tabular-nums text-[var(--price-win-contrast)]">

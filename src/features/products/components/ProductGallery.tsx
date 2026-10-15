@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import type { ProductImage } from "@/server/services/catalog";
+import { ProductImage } from "@/components/shared/ProductImage";
+import type { ProductImage as ProductImageData } from "@/server/services/catalog";
 
 export interface ProductGalleryProps {
-  images: ProductImage[];
+  images: ProductImageData[];
   productName: string;
   discountPercent?: number;
 }
@@ -26,21 +27,8 @@ export function ProductGallery({ images, productName, discountPercent }: Product
 
   if (images.length === 0) {
     return (
-      <div className="flex aspect-square w-full items-center justify-center rounded-3xl bg-[var(--bg-inset)]">
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 24 24"
-          className="h-12 w-12 text-[var(--text-tertiary)]"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.2"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M3 16.5V7.5a1.5 1.5 0 0 1 1.5-1.5h15A1.5 1.5 0 0 1 21 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16.5Z M3 16.5 8.25 11l3 3 3.75-4.5L21 15"
-          />
-        </svg>
+      <div className="aspect-square w-full overflow-hidden rounded-3xl border border-[var(--border)]">
+        <ProductImage src={null} alt="" loading="eager" />
       </div>
     );
   }
@@ -56,15 +44,16 @@ export function ProductGallery({ images, productName, discountPercent }: Product
           aria-label={isZoomed ? "Reducir imagen" : `Ampliar imagen de ${productName}`}
           className="block w-full cursor-zoom-in outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-inset"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          {/* aspect-square reserva el alto antes de que cargue: sin esto la
+              ficha entera salta cuando llega la imagen. */}
+          <ProductImage
             src={active.url}
             alt={active.altText ?? productName}
-            /* aspect-square reserva el alto antes de que cargue: sin esto la
-               ficha entera salta cuando llega la imagen. */
+            loading="eager"
             className={`aspect-square w-full object-contain p-6 transition-transform duration-[var(--dur-slow)] ease-[var(--ease-out-expo)] ${
               isZoomed ? "scale-[1.6]" : "scale-100"
             }`}
+            placeholderClassName="aspect-square w-full object-cover"
           />
         </button>
 
@@ -101,13 +90,7 @@ export function ProductGallery({ images, productName, discountPercent }: Product
                       : "border-[var(--border)] opacity-60 hover:opacity-100"
                   }`}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={image.url}
-                    alt=""
-                    loading="lazy"
-                    className="h-full w-full object-contain p-1.5"
-                  />
+                  <ProductImage src={image.url} alt="" className="h-full w-full object-contain p-1.5" />
                 </button>
               </li>
             );

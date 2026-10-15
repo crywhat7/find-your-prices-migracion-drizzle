@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { ProductImage } from "@/components/shared/ProductImage";
 import { formatPrice } from "@/lib/format";
 import type { Product } from "@/types";
 
@@ -316,15 +317,7 @@ function ProductHeader({ product, href, removeLabel, onRemove }: ProductHeaderPr
     <div className="flex flex-col gap-2">
       <div className="relative">
         <div className="h-20 w-full overflow-hidden rounded-xl bg-[var(--bg-inset)]">
-          {product.imageUrl && (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              src={product.imageUrl}
-              alt=""
-              loading="lazy"
-              className="h-full w-full object-contain p-2"
-            />
-          )}
+          <ProductImage src={product.imageUrl} alt="" className="h-full w-full object-contain p-2" />
         </div>
 
         <button
