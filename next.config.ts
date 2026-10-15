@@ -50,6 +50,11 @@ const nextConfig: NextConfig = {
     // 404 para URLs sin ruta: hay un layout raíz por idioma, así que no hay
     // un `app/not-found.tsx` posible. Ver `app/global-not-found.tsx`.
     globalNotFound: true,
+    // Sin caché de Turbopack en `next build` (activa por defecto desde 16.3).
+    // Cloudflare Workers Builds la restaura a medias y un `.sst` truncado
+    // tumba el build con "Failed to lookup task ids". Compilar en frío es
+    // más lento, pero siempre funciona.
+    turbopackFileSystemCacheForBuild: false,
     serverActions: {
       // El panel sube imágenes de categoría (hasta 5 MB) por server action;
       // el tope por defecto es 1 MB. Con margen para el sobre de multipart.
