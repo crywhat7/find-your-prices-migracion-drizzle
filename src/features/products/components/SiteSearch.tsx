@@ -64,7 +64,12 @@ function scrollToResults(): void {
  *   - Si no, se navega a la página que representa ese alcance, con la
  *     búsqueda puesta y el ancla de los resultados.
  */
-export function SiteSearch() {
+export interface SiteSearchProps {
+  /** Ver `SearchBarProps.onActiveChange`. */
+  onActiveChange?: (active: boolean) => void;
+}
+
+export function SiteSearch({ onActiveChange }: SiteSearchProps = {}) {
   const { locale, t } = useLocale();
   const pathname = usePathname();
   const router = useRouter();
@@ -187,6 +192,7 @@ export function SiteSearch() {
       onQueryChange={onQueryChange}
       onSubmit={onSubmit}
       onSelectSuggestion={onSelectSuggestion}
+      onActiveChange={onActiveChange}
       leading={
         <ScopeSelect
           value={selectionKey(selection)}

@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { LocaleProvider } from "@/features/i18n/LocaleContext";
+import { ThemeProvider } from "@/features/theme/ThemeProvider";
 import { MobileMenu } from "./MobileMenu";
 
-function mount(locale: "es" | "en" = "es") {
+function mount(locale: "es" | "en" = "es", compact = false) {
   return render(
-    <LocaleProvider initialLocale={locale}>
-      <MobileMenu />
-    </LocaleProvider>,
+    <ThemeProvider>
+      <LocaleProvider initialLocale={locale}>
+        <MobileMenu compact={compact} />
+      </LocaleProvider>
+    </ThemeProvider>,
   );
 }
 
@@ -37,5 +40,22 @@ describe("MobileMenu", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Tiendas" }));
     expect(screen.queryByRole("menu")).toBeNull();
     expect(button).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("sin compactar no repite favoritos, cotización ni preferencias", () => {
+    mount("es");
+    fireEvent.click(screen.getByTestId("mobile-menu-button"));
+    expect(screen.queryByRole("menuitem", { name: "Favoritos" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Cotización" })).toBeNull();
+    expect(screen.queryByText("Idioma")).toBeNull();
+  });
+
+  it("compacto suma favoritos, cotización, idioma y tema", () => {
+    mount("es", true);
+    fireEvent.click(screen.getByTestId("mobile-menu-button"));
+    expect(screen.getByRole("menuitem", { name: "Favoritos" })).toHaveAttribute("href", "/favoritos");
+    expect(screen.getByRole("menuitem", { name: "Cotización" })).toBeInTheDocument();
+    expect(screen.getByText("Idioma")).toBeInTheDocument();
+    expect(screen.getByText("Tema")).toBeInTheDocument();
   });
 });

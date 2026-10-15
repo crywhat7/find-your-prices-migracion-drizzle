@@ -89,20 +89,34 @@ export function PreferencesMenu({ localePaths }: PreferencesMenuProps = {}) {
           className="absolute top-full right-0 z-50 mt-2 w-[15.5rem] rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3 shadow-[var(--shadow-md)]"
           style={{ animation: "fyp-fade 180ms var(--ease-out-quart) both" }}
         >
-          <div className="flex items-center justify-between gap-4 px-1 py-1.5">
-            <span className="text-[0.8125rem] font-medium tracking-[-0.005em] text-[var(--text-secondary)]">
-              {labels.language}
-            </span>
-            <LocaleSwitcher paths={localePaths} />
-          </div>
-          <div className="mt-1 flex items-center justify-between gap-4 border-t border-[var(--border)] px-1 pt-2.5 pb-1">
-            <span className="text-[0.8125rem] font-medium tracking-[-0.005em] text-[var(--text-secondary)]">
-              {labels.theme}
-            </span>
-            <ThemeToggle label={labels.theme} />
-          </div>
+          <PreferencesRows localePaths={localePaths} />
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Las dos filas del panel, idioma y tema. Sueltas para que el menú de
+ * teléfono las muestre cuando el buscador le quita el sitio a este botón.
+ */
+export function PreferencesRows({ localePaths }: PreferencesMenuProps = {}) {
+  const { locale } = useLocale();
+  const labels = LABELS[locale] ?? LABELS.en;
+  return (
+    <>
+      <div className="flex items-center justify-between gap-4 px-1 py-1.5">
+        <span className="text-[0.8125rem] font-medium tracking-[-0.005em] text-[var(--text-secondary)]">
+          {labels.language}
+        </span>
+        <LocaleSwitcher paths={localePaths} />
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-4 border-t border-[var(--border)] px-1 pt-2.5 pb-1">
+        <span className="text-[0.8125rem] font-medium tracking-[-0.005em] text-[var(--text-secondary)]">
+          {labels.theme}
+        </span>
+        <ThemeToggle label={labels.theme} />
+      </div>
+    </>
   );
 }

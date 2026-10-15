@@ -57,6 +57,12 @@ export function SiteNav({ localePaths }: SiteNavProps = {}) {
   const [isScrolled, setIsScrolled] = useState(false);
   const { count: favoritesCount } = useFavorites();
   const { count: cartCount } = useCart();
+  const [searchActive, setSearchActive] = useState(false);
+  // Si el menú se abrió con la barra compacta, sigue compacta hasta cerrarlo:
+  // tocar el botón le quita el foco al buscador, y sin esto los iconos
+  // volverían a la barra —y se irían del panel— justo al abrirlo.
+  const [menuHolds, setMenuHolds] = useState(false);
+  const compact = searchActive || menuHolds;
 
   useScrollProgress();
 
@@ -97,7 +103,7 @@ export function SiteNav({ localePaths }: SiteNavProps = {}) {
             queda entre el logo y el icono de categorías; en escritorio se
             acota para que no se convierta en una línea de un metro. */}
         <div className="min-w-0 flex-1 lg:mx-auto lg:max-w-[34rem]">
-          <SiteSearch />
+          <SiteSearch onActiveChange={setSearchActive} />
         </div>
 
         {/* Las puertas del sitio después del buscador: categorías, tiendas,
@@ -105,7 +111,9 @@ export function SiteNav({ localePaths }: SiteNavProps = {}) {
             primeras desde cualquier página. Por debajo de `lg` categorías,
             tiendas y aliados se pliegan en el menú hamburguesa (los enlaces siguen en
             el pie para los rastreadores) y la barra queda con favoritos,
-            preferencias y menú, en ese orden. Idioma y tema van plegados en el último botón. */}
+            preferencias y menú, en ese orden. Idioma y tema van plegados en el último botón.
+            Y mientras se usa el buscador, en teléfono también se pliegan
+            favoritos, cotización y preferencias (ver `.nav-tools`). */}
         <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
           <NavLink
             href={routeFor("categories", locale)}
@@ -133,84 +141,94 @@ export function SiteNav({ localePaths }: SiteNavProps = {}) {
             <path d="M12 8.5S10.8 4.5 8.4 4.5a2 2 0 0 0 0 4H12Zm0 0s1.2-4 3.6-4a2 2 0 0 1 0 4H12Z" />
           </NavLink>
 
-          {/* El corazón es la puerta a "Mis favoritos" y a la vez el contador:
-              se ve cuántos hay sin entrar. En el servidor y hasta hidratar el
-              contador es 0 y no se pinta, así el HTML coincide. */}
-          <Link
-            href={routeFor("favorites", locale)}
-            aria-label={
-              favoritesCount > 0
-                ? `${FAVORITES_LABEL[locale] ?? FAVORITES_LABEL.en} (${favoritesCount})`
-                : (FAVORITES_LABEL[locale] ?? FAVORITES_LABEL.en)
-            }
-            title={FAVORITES_LABEL[locale] ?? FAVORITES_LABEL.en}
-            className="relative -m-1 flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-secondary)] outline-none transition-colors duration-[var(--dur-fast)] hover:text-[var(--favorite)] focus-visible:ring-2 focus-visible:ring-[var(--favorite)]"
-          >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              className="h-[20px] w-[20px]"
-              fill={favoritesCount > 0 ? "var(--favorite)" : "none"}
-              stroke={favoritesCount > 0 ? "var(--favorite)" : "currentColor"}
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 20.5s-7.5-4.6-9.3-9.4C1.4 7.6 3.6 4.5 6.9 4.5c1.9 0 3.5 1 4.4 2.4a5.1 5.1 0 0 1 4.4-2.4c3.3 0 5.6 3.1 4.3 6.6C19.5 15.9 12 20.5 12 20.5Z" />
-            </svg>
-            {favoritesCount > 0 && (
-              <span
-                aria-hidden="true"
-                className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--favorite)] px-1 text-[0.625rem] font-semibold tabular-nums text-[var(--favorite-contrast)] shadow-[var(--shadow-sm)]"
+          <div data-collapsed={compact} className="nav-tools">
+            <div className="nav-tools-row flex items-center gap-0.5 sm:gap-2">
+              {/* El corazón es la puerta a "Mis favoritos" y a la vez el contador:
+                  se ve cuántos hay sin entrar. En el servidor y hasta hidratar el
+                  contador es 0 y no se pinta, así el HTML coincide. */}
+              <Link
+                href={routeFor("favorites", locale)}
+                aria-label={
+                  favoritesCount > 0
+                    ? `${FAVORITES_LABEL[locale] ?? FAVORITES_LABEL.en} (${favoritesCount})`
+                    : (FAVORITES_LABEL[locale] ?? FAVORITES_LABEL.en)
+                }
+                title={FAVORITES_LABEL[locale] ?? FAVORITES_LABEL.en}
+                className="nav-tool relative -m-1 flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-secondary)] outline-none transition-colors duration-[var(--dur-fast)] hover:text-[var(--favorite)] focus-visible:ring-2 focus-visible:ring-[var(--favorite)]"
               >
-                {favoritesCount > 99 ? "99+" : favoritesCount}
-              </span>
-            )}
-          </Link>
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="h-[20px] w-[20px]"
+                  fill={favoritesCount > 0 ? "var(--favorite)" : "none"}
+                  stroke={favoritesCount > 0 ? "var(--favorite)" : "currentColor"}
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 20.5s-7.5-4.6-9.3-9.4C1.4 7.6 3.6 4.5 6.9 4.5c1.9 0 3.5 1 4.4 2.4a5.1 5.1 0 0 1 4.4-2.4c3.3 0 5.6 3.1 4.3 6.6C19.5 15.9 12 20.5 12 20.5Z" />
+                </svg>
+                {favoritesCount > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--favorite)] px-1 text-[0.625rem] font-semibold tabular-nums text-[var(--favorite-contrast)] shadow-[var(--shadow-sm)]"
+                  >
+                    {favoritesCount > 99 ? "99+" : favoritesCount}
+                  </span>
+                )}
+              </Link>
 
-          {/* El carrito: la puerta a la cotización, con el número de
-              artículos distintos. En tinta y no en color: es la herramienta
-              de trabajo de la barra, no un estado. */}
-          <Link
-            href={routeFor("quote", locale)}
-            aria-label={
-              cartCount > 0
-                ? `${QUOTE_LABEL[locale] ?? QUOTE_LABEL.en} (${cartCount})`
-                : (QUOTE_LABEL[locale] ?? QUOTE_LABEL.en)
-            }
-            title={QUOTE_LABEL[locale] ?? QUOTE_LABEL.en}
-            className="relative -m-1 flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-secondary)] outline-none transition-colors duration-[var(--dur-fast)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              className={`h-[20px] w-[20px] ${cartCount > 0 ? "text-[var(--text)]" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M3 4h2.2l2.2 11.1a1.6 1.6 0 0 0 1.6 1.3h8.4a1.6 1.6 0 0 0 1.6-1.2L20.6 8H6.1" />
-              <circle cx="9.5" cy="20" r="1.1" fill="currentColor" stroke="none" />
-              <circle cx="17" cy="20" r="1.1" fill="currentColor" stroke="none" />
-            </svg>
-            {cartCount > 0 && (
-              <span
-                key={cartCount}
-                aria-hidden="true"
-                className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--text)] px-1 text-[0.625rem] font-semibold tabular-nums text-[var(--text-inverted)] shadow-[var(--shadow-sm)] [animation:fyp-heartbeat_420ms_var(--ease-spring)_both]"
+              {/* El carrito: la puerta a la cotización, con el número de
+                  artículos distintos. En tinta y no en color: es la herramienta
+                  de trabajo de la barra, no un estado. */}
+              <Link
+                href={routeFor("quote", locale)}
+                aria-label={
+                  cartCount > 0
+                    ? `${QUOTE_LABEL[locale] ?? QUOTE_LABEL.en} (${cartCount})`
+                    : (QUOTE_LABEL[locale] ?? QUOTE_LABEL.en)
+                }
+                title={QUOTE_LABEL[locale] ?? QUOTE_LABEL.en}
+                className="nav-tool relative -m-1 flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-secondary)] outline-none transition-colors duration-[var(--dur-fast)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               >
-                {cartCount > 99 ? "99+" : cartCount}
-              </span>
-            )}
-          </Link>
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className={`h-[20px] w-[20px] ${cartCount > 0 ? "text-[var(--text)]" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M3 4h2.2l2.2 11.1a1.6 1.6 0 0 0 1.6 1.3h8.4a1.6 1.6 0 0 0 1.6-1.2L20.6 8H6.1" />
+                  <circle cx="9.5" cy="20" r="1.1" fill="currentColor" stroke="none" />
+                  <circle cx="17" cy="20" r="1.1" fill="currentColor" stroke="none" />
+                </svg>
+                {cartCount > 0 && (
+                  <span
+                    key={cartCount}
+                    aria-hidden="true"
+                    className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--text)] px-1 text-[0.625rem] font-semibold tabular-nums text-[var(--text-inverted)] shadow-[var(--shadow-sm)] [animation:fyp-heartbeat_420ms_var(--ease-spring)_both]"
+                  >
+                    {cartCount > 99 ? "99+" : cartCount}
+                  </span>
+                )}
+              </Link>
 
-          <PreferencesMenu localePaths={localePaths} />
+              <div className="nav-tool">
+                <PreferencesMenu localePaths={localePaths} />
+              </div>
+            </div>
+          </div>
 
           {/* Último en teléfono: favoritos, cotización, preferencias, menú. */}
           <div className="lg:hidden">
-            <MobileMenu />
+            <MobileMenu
+              compact={compact}
+              localePaths={localePaths}
+              onOpenChange={(open) => setMenuHolds(open && searchActive)}
+            />
           </div>
         </div>
       </div>

@@ -43,6 +43,12 @@ export interface SearchBarProps {
    * redondeado y ese lado lo cierra este control.
    */
   leading?: ReactNode;
+  /**
+   * Avisa cuando la caja pasa a estar "en uso" —con el foco o con texto— y
+   * cuando deja de estarlo. La barra lo usa en teléfono para apartar sus
+   * iconos y darle el ancho al buscador.
+   */
+  onActiveChange?: (active: boolean) => void;
 }
 
 const HEIGHT = { sm: "h-10", md: "h-12" } as const;
@@ -56,6 +62,7 @@ export function SearchBar({
   onSelectSuggestion,
   onSubmit,
   leading,
+  onActiveChange,
 }: SearchBarProps) {
   const { t } = useLocale();
   const [query, setQuery] = useState(value);
@@ -161,6 +168,18 @@ export function SearchBar({
 
   const optionId = (index: number) => `${listboxId}-${index}`;
 
+  // "En uso": con el foco o con algo escrito. El foco se suelta con el mismo
+  // retraso que el desplegable: si la barra devolviera sus iconos en el acto,
+  // la caja se encogería bajo el dedo justo antes del click en una opción.
+  const [focused, setFocused] = useState(false);
+  const blurTimer = useRef<number | undefined>(undefined);
+  const active = focused || query.length > 0;
+  useEffect(() => {
+    onActiveChange?.(active);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+  useEffect(() => () => window.clearTimeout(blurTimer.current), []);
+
   return (
     // Con `leading` la píldora son dos piezas en fila; la caja y sus iconos
     // van en su propio contenedor para que se posicionen contra ella y no
@@ -201,10 +220,17 @@ export function SearchBar({
           setQuery(event.target.value);
           setIsOpen(true);
         }}
-        onFocus={() => setIsOpen(true)}
+        onFocus={() => {
+          window.clearTimeout(blurTimer.current);
+          setFocused(true);
+          setIsOpen(true);
+        }}
         // Con retraso: el clic en una opción dispara blur ANTES que su propio
         // click, y cerrar de inmediato desmontaría la opción bajo el puntero.
-        onBlur={() => window.setTimeout(() => setIsOpen(false), 120)}
+        onBlur={() => {
+          window.setTimeout(() => setIsOpen(false), 120);
+          blurTimer.current = window.setTimeout(() => setFocused(false), 150);
+        }}
         onKeyDown={onKeyDown}
         className={`${HEIGHT[size]} ${FIELD_TEXT[size]} w-full ${leading ? "rounded-l-none rounded-r-full" : "rounded-full"} border border-[var(--border)] bg-[var(--bg-elevated)] pr-10 tracking-[-0.01em] text-[var(--text)] shadow-[var(--shadow-sm)] transition-[border-color,box-shadow,background-color] duration-[var(--dur-base)] ease-[var(--ease-out-expo)] outline-none placeholder:text-[var(--text-tertiary)] hover:border-[var(--border-strong)] focus:border-[var(--accent)] focus:shadow-[0_0_0_4px_var(--accent-soft)] focus-visible:outline-none [&::-webkit-search-cancel-button]:hidden ${
           size === "sm" ? "pl-10" : "pl-11"

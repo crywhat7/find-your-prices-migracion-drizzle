@@ -491,9 +491,95 @@ select option {
   animation: fyp-drift 22s var(--ease-in-out-expo) infinite;
 }
 
+/* Los atajos de la barra le ceden el sitio al buscador ----------------------
+ * Por debajo de `lg`, mientras el buscador está en uso (`data-collapsed`),
+ * favoritos, cotización y preferencias se encogen hacia el botón del menú,
+ * que los recibe en su panel (ver SiteNav y MobileMenu). La columna del grid
+ * va de 1fr a 0fr: el ancho se anima sin medir nada y el buscador crece en el
+ * mismo fotograma. Cada icono, además, se achica y se desvanece hacia la
+ * derecha en cascada, empezando por el más cercano al menú; al volver salen
+ * de él en el mismo orden. No se recorta con `overflow` a propósito: el panel
+ * de preferencias cuelga de este grupo y quedaría cortado. `visibility` cae
+ * al terminar la salida, y con ella el foco y el lector de pantalla. */
+.nav-tools {
+  display: grid;
+  grid-template-columns: 1fr;
+  transition: grid-template-columns var(--dur-base) var(--ease-out-expo);
+}
+
+.nav-tools-row {
+  min-width: 0;
+}
+
+.nav-tool {
+  transform-origin: 100% 50%;
+  transition:
+    opacity var(--dur-base) var(--ease-out-quart),
+    transform var(--dur-base) var(--ease-spring),
+    filter var(--dur-base) var(--ease-out-quart);
+}
+
+.nav-tools-row > .nav-tool:nth-child(1) {
+  transition-delay: 90ms;
+}
+
+.nav-tools-row > .nav-tool:nth-child(2) {
+  transition-delay: 45ms;
+}
+
+@media (width < 64rem) {
+  .nav-tools[data-collapsed="true"] {
+    grid-template-columns: 0fr;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      grid-template-columns var(--dur-base) var(--ease-out-expo) 70ms,
+      visibility 0s linear calc(var(--dur-base) + 140ms);
+  }
+
+  .nav-tools[data-collapsed="true"] .nav-tool {
+    opacity: 0;
+    transform: translate3d(12px, 0, 0) scale(0.5);
+    filter: blur(3px);
+  }
+}
+
+/* El botón del menú acusa recibo de lo que la barra le pasa. */
+@keyframes fyp-menu-receive {
+  0% {
+    transform: scale(1) rotate(0);
+  }
+  40% {
+    transform: scale(1.2) rotate(-6deg);
+  }
+  100% {
+    transform: scale(1) rotate(0);
+  }
+}
+
+/* Y en el panel, lo recibido entra desde el lado del botón. */
+@keyframes fyp-menu-arrive {
+  from {
+    opacity: 0;
+    transform: translate3d(10px, -4px, 0) scale(0.96);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+
+  /* Las cascadas de la barra son puro adorno: sin ellas, el cambio es seco. */
+  .nav-tools,
+  .nav-tool {
+    transition-delay: 0s !important;
   }
 
   *,
