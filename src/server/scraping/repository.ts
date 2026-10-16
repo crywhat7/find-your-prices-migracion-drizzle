@@ -1,5 +1,9 @@
 import 'server-only';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { and, asc, eq, lte, sql } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { pgErrorCode, pgErrorMessage } from '@/server/db/pg';
+import { rpc } from '@/server/db/rpc';
+import { scrapeRuns, scrapeTargets, storeCategories, stores } from '@/server/db/schema';
 import { nextRunFromAnchor } from '@/lib/schedule';
 import { logError } from '@/server/errors/logError';
 import type {
@@ -12,7 +16,7 @@ import type {
 } from './types';
 
 /**
- * Acceso a datos del scraping. Aisla al runner de PostgREST: si mañana se
+ * Acceso a datos del scraping. Aisla al runner de la base: si mañana se
  * cambia de proveedor, solo cambia este archivo.
  */
 
@@ -36,26 +40,29 @@ export interface IngestCounters {
 // Tiendas y targets
 // -----------------------------------------------------------------------------
 
-export async function getStoreById(storeId: string): Promise<StoreRow> {
-  const { data, error } = await getSupabaseAdmin()
-    .from('stores')
-    .select('*')
-    .eq('id', storeId)
-    .single();
+/** Corre una consulta y, si falla, lanza con un mensaje que dice qué se intentaba. */
+async function attempt<T>(what: string, work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    throw new Error(`${what}: ${pgErrorMessage(error)}`);
+  }
+}
 
-  if (error) throw new Error(`No se pudo leer la tienda ${storeId}: ${error.message}`);
-  return data as StoreRow;
+export async function getStoreById(storeId: string): Promise<StoreRow> {
+  const [row] = await attempt(`No se pudo leer la tienda ${storeId}`, () =>
+    getDb().select().from(stores).where(eq(stores.id, storeId)),
+  );
+  if (!row) throw new Error(`No se pudo leer la tienda ${storeId}: no existe`);
+  return row as StoreRow;
 }
 
 export async function getTargetById(targetId: string): Promise<ScrapeTargetRow> {
-  const { data, error } = await getSupabaseAdmin()
-    .from('scrape_targets')
-    .select('*')
-    .eq('id', targetId)
-    .single();
-
-  if (error) throw new Error(`No se pudo leer el target ${targetId}: ${error.message}`);
-  return data as ScrapeTargetRow;
+  const [row] = await attempt(`No se pudo leer el target ${targetId}`, () =>
+    getDb().select().from(scrapeTargets).where(eq(scrapeTargets.id, targetId)),
+  );
+  if (!row) throw new Error(`No se pudo leer el target ${targetId}: no existe`);
+  return row as ScrapeTargetRow;
 }
 
 /**
@@ -63,17 +70,15 @@ export async function getTargetById(targetId: string): Promise<ScrapeTargetRow> 
  * endpoint de cron en cada disparo.
  */
 export async function getDueTargets(limit: number): Promise<ScrapeTargetRow[]> {
-  const { data, error } = await getSupabaseAdmin()
-    .from('scrape_targets')
-    .select('*')
-    .eq('is_active', true)
-    .lte('next_run_at', new Date().toISOString())
-    .order('priority', { ascending: true })
-    .order('next_run_at', { ascending: true })
-    .limit(limit);
-
-  if (error) throw new Error(`No se pudieron listar los targets pendientes: ${error.message}`);
-  return (data ?? []) as ScrapeTargetRow[];
+  const rows = await attempt('No se pudieron listar los targets pendientes', () =>
+    getDb()
+      .select()
+      .from(scrapeTargets)
+      .where(and(eq(scrapeTargets.is_active, true), lte(scrapeTargets.next_run_at, new Date().toISOString())))
+      .orderBy(asc(scrapeTargets.priority), asc(scrapeTargets.next_run_at))
+      .limit(limit),
+  );
+  return rows as ScrapeTargetRow[];
 }
 
 // -----------------------------------------------------------------------------
@@ -86,29 +91,27 @@ export async function createRun(params: {
   strategyKey: string;
   trigger: ScrapeTrigger;
 }): Promise<{ runId: string } | { skipped: true; reason: string }> {
-  const { data, error } = await getSupabaseAdmin()
-    .from('scrape_runs')
-    .insert({
-      target_id: params.targetId,
-      store_id: params.storeId,
-      strategy_key: params.strategyKey,
-      trigger_source: params.trigger,
-      status: 'running',
-    })
-    .select('id')
-    .single();
-
-  if (error) {
+  try {
+    const [row] = await getDb()
+      .insert(scrapeRuns)
+      .values({
+        target_id: params.targetId,
+        store_id: params.storeId,
+        strategy_key: params.strategyKey,
+        trigger_source: params.trigger,
+        status: 'running',
+      })
+      .returning({ id: scrapeRuns.id });
+    return { runId: row.id };
+  } catch (error) {
     // El indice unico parcial scrape_runs_one_active_per_target impide dos
     // corridas simultaneas del mismo target: no es un fallo, es el lock haciendo
     // su trabajo (por ejemplo si el cron se solapa con una corrida lenta).
-    if (error.code === '23505') {
+    if (pgErrorCode(error) === '23505') {
       return { skipped: true, reason: 'Ya hay una corrida en curso para este target' };
     }
-    throw new Error(`No se pudo abrir la corrida: ${error.message}`);
+    throw new Error(`No se pudo abrir la corrida: ${pgErrorMessage(error)}`);
   }
-
-  return { runId: data.id as string };
 }
 
 /**
@@ -134,20 +137,21 @@ export async function recordHeartbeat(
   progress: RunProgress,
   log: Array<Record<string, unknown>>,
 ): Promise<void> {
-  const { error } = await getSupabaseAdmin()
-    .from('scrape_runs')
-    .update({
-      stats: { progress },
-      http_requests: progress.httpRequests,
-      http_errors: progress.httpErrors,
-      bytes_downloaded: progress.bytes,
-      // Las ultimas entradas: si la funcion muere, esto es lo que queda.
-      error_log: log.slice(-40),
-    })
-    .eq('id', runId)
-    .eq('status', 'running');
-
-  if (error) console.error(`[scraping] No se pudo registrar el latido de ${runId}: ${error.message}`);
+  try {
+    await getDb()
+      .update(scrapeRuns)
+      .set({
+        stats: { progress },
+        http_requests: progress.httpRequests,
+        http_errors: progress.httpErrors,
+        bytes_downloaded: progress.bytes,
+        // Las ultimas entradas: si la funcion muere, esto es lo que queda.
+        error_log: log.slice(-40),
+      })
+      .where(and(eq(scrapeRuns.id, runId), eq(scrapeRuns.status, 'running')));
+  } catch (error) {
+    console.error(`[scraping] No se pudo registrar el latido de ${runId}: ${pgErrorMessage(error)}`);
+  }
 }
 
 /**
@@ -166,18 +170,23 @@ export async function recordHeartbeat(
  * Devuelve los targets afectados para que el runner los reprograme como fallo.
  */
 export async function reapStaleRuns(silenceMs: number): Promise<string[]> {
-  const db = getSupabaseAdmin();
-  const { data, error } = await db
-    .from('scrape_runs')
-    .select('id, target_id, started_at, stats')
-    .eq('status', 'running');
-
-  if (error) throw new Error(`No se pudieron leer las corridas en curso: ${error.message}`);
+  const db = getDb();
+  const data = await attempt('No se pudieron leer las corridas en curso', () =>
+    db
+      .select({
+        id: scrapeRuns.id,
+        target_id: scrapeRuns.target_id,
+        started_at: scrapeRuns.started_at,
+        stats: scrapeRuns.stats,
+      })
+      .from(scrapeRuns)
+      .where(eq(scrapeRuns.status, 'running')),
+  );
 
   const now = Date.now();
   const reaped: string[] = [];
 
-  for (const run of data ?? []) {
+  for (const run of data) {
     const progress = (run.stats as { progress?: RunProgress } | null)?.progress;
     const lastSignal = progress?.at ?? (run.started_at as string);
     if (now - new Date(lastSignal).getTime() < silenceMs) continue;
@@ -188,19 +197,18 @@ export async function reapStaleRuns(silenceMs: number): Promise<string[]> {
         `(${progress.httpRequests} requests${progress.lastMessage ? `; ultimo mensaje: ${progress.lastMessage}` : ''})`
       : 'No llego a dar ninguna senal despues de arrancar';
 
-    const { error: updateError } = await db
-      .from('scrape_runs')
-      .update({
-        status: 'failed',
-        finished_at: new Date().toISOString(),
-        duration_ms: aliveFor * 1000,
-        error_message: `Corrida abandonada: el proceso dejo de responder antes de cerrarla. ${detail}`,
-      })
-      .eq('id', run.id)
-      .eq('status', 'running');
-
-    if (updateError) throw new Error(`No se pudo cerrar la corrida colgada ${run.id}: ${updateError.message}`);
-    if (run.target_id) reaped.push(run.target_id as string);
+    await attempt(`No se pudo cerrar la corrida colgada ${run.id}`, () =>
+      db
+        .update(scrapeRuns)
+        .set({
+          status: 'failed',
+          finished_at: new Date().toISOString(),
+          duration_ms: aliveFor * 1000,
+          error_message: `Corrida abandonada: el proceso dejo de responder antes de cerrarla. ${detail}`,
+        })
+        .where(and(eq(scrapeRuns.id, run.id), eq(scrapeRuns.status, 'running'))),
+    );
+    if (run.target_id) reaped.push(run.target_id);
   }
 
   return [...new Set(reaped)];
@@ -210,12 +218,11 @@ export async function finishRun(
   runId: string,
   patch: Record<string, unknown>,
 ): Promise<void> {
-  const { error } = await getSupabaseAdmin()
-    .from('scrape_runs')
-    .update({ ...patch, finished_at: new Date().toISOString() })
-    .eq('id', runId);
-
-  if (error) throw new Error(`No se pudo cerrar la corrida ${runId}: ${error.message}`);
+  // `patch` lo arma el runner con nombres de columna de scrape_runs.
+  const values = { ...patch, finished_at: new Date().toISOString() } as Partial<typeof scrapeRuns.$inferInsert>;
+  await attempt(`No se pudo cerrar la corrida ${runId}`, () =>
+    getDb().update(scrapeRuns).set(values).where(eq(scrapeRuns.id, runId)),
+  );
 }
 
 /**
@@ -258,7 +265,7 @@ export async function updateTargetAfterRun(params: {
       : new Date(Date.now() + frequency * 60_000)
     : new Date(Date.now() + Math.min(frequency, 5 * 2 ** Math.min(failures, 5)) * 60_000);
 
-  const patch: Record<string, unknown> = {
+  const patch: Partial<typeof scrapeTargets.$inferInsert> = {
     last_run_at: new Date().toISOString(),
     last_status: status,
     consecutive_failures: failures,
@@ -273,12 +280,9 @@ export async function updateTargetAfterRun(params: {
     }`;
   }
 
-  const { error } = await getSupabaseAdmin()
-    .from('scrape_targets')
-    .update(patch)
-    .eq('id', target.id);
-
-  if (error) throw new Error(`No se pudo reprogramar el target ${target.id}: ${error.message}`);
+  await attempt(`No se pudo reprogramar el target ${target.id}`, () =>
+    getDb().update(scrapeTargets).set(patch).where(eq(scrapeTargets.id, target.id)),
+  );
 }
 
 // -----------------------------------------------------------------------------
@@ -294,7 +298,7 @@ export async function upsertStoreCategories(
   storeId: string,
   categories: NormalizedCategory[],
 ): Promise<Map<string, string>> {
-  const db = getSupabaseAdmin();
+  const db = getDb();
 
   if (categories.length > 0) {
     const rows = categories.map((c) => ({
@@ -312,45 +316,67 @@ export async function upsertStoreCategories(
       last_seen_at: new Date().toISOString(),
     }));
 
-    const { error } = await db
-      .from('store_categories')
-      .upsert(rows, { onConflict: 'store_id,external_id' });
-
-    if (error) throw new Error(`No se pudieron guardar las categorias: ${error.message}`);
+    // Igual que el upsert de PostgREST: lo que viene pisa todo lo que se manda,
+    // y lo que no se manda (category_id, parent_id) queda como estaba.
+    await attempt('No se pudieron guardar las categorias', () =>
+      db
+        .insert(storeCategories)
+        .values(rows)
+        .onConflictDoUpdate({
+          target: [storeCategories.store_id, storeCategories.external_id],
+          set: {
+            external_parent_id: sql`excluded.external_parent_id`,
+            name: sql`excluded.name`,
+            slug: sql`excluded.slug`,
+            url: sql`excluded.url`,
+            level: sql`excluded.level`,
+            position: sql`excluded.position`,
+            product_count: sql`excluded.product_count`,
+            raw: sql`excluded.raw`,
+            is_active: sql`excluded.is_active`,
+            last_seen_at: sql`excluded.last_seen_at`,
+          },
+        }),
+    );
 
     // Segunda pasada: ahora que todas existen, se enlaza cada una con su padre.
     await linkCategoryParents(storeId);
   }
 
-  const { data, error } = await db
-    .from('store_categories')
-    .select('id, external_id')
-    .eq('store_id', storeId);
+  const data = await attempt('No se pudo leer el mapa de categorias', () =>
+    db
+      .select({ id: storeCategories.id, external_id: storeCategories.external_id })
+      .from(storeCategories)
+      .where(eq(storeCategories.store_id, storeId)),
+  );
 
-  if (error) throw new Error(`No se pudo leer el mapa de categorias: ${error.message}`);
-
-  return new Map((data ?? []).map((row) => [row.external_id as string, row.id as string]));
+  return new Map(data.map((row) => [row.external_id, row.id]));
 }
 
 /** Resuelve external_parent_id -> parent_id dentro de una misma tienda. */
 async function linkCategoryParents(storeId: string): Promise<void> {
-  const db = getSupabaseAdmin();
-  const { data, error } = await db
-    .from('store_categories')
-    .select('id, external_id, external_parent_id, parent_id')
-    .eq('store_id', storeId);
+  const db = getDb();
+  const data = await attempt('No se pudo leer el arbol de categorias', () =>
+    db
+      .select({
+        id: storeCategories.id,
+        external_id: storeCategories.external_id,
+        external_parent_id: storeCategories.external_parent_id,
+        parent_id: storeCategories.parent_id,
+      })
+      .from(storeCategories)
+      .where(eq(storeCategories.store_id, storeId)),
+  );
 
-  if (error) throw new Error(`No se pudo leer el arbol de categorias: ${error.message}`);
-
-  const byExternal = new Map((data ?? []).map((row) => [row.external_id as string, row]));
-  const updates = (data ?? [])
+  const byExternal = new Map(data.map((row) => [row.external_id, row]));
+  const updates = data
     .filter((row) => row.external_parent_id)
     .map((row) => ({ row, parent: byExternal.get(row.external_parent_id as string) }))
     .filter(({ row, parent }) => parent && parent.id !== row.id && row.parent_id !== parent.id)
     .map(({ row, parent }) => ({ id: row.id, parent_id: parent!.id }));
 
   for (const update of updates) {
-    await db.from('store_categories').update({ parent_id: update.parent_id }).eq('id', update.id);
+    await db.update(storeCategories).set({ parent_id: update.parent_id }).where(eq(storeCategories.id, update.id));
   }
 }
 
@@ -367,7 +393,7 @@ async function linkCategoryParents(storeId: string): Promise<void> {
 const INGEST_MIN_CHUNK_SIZE = 10;
 
 /**
- * Supabase corta toda sentencia que pase su `statement_timeout`. Un lote de 250
+ * Postgres corta toda sentencia que pase su `statement_timeout`. Un lote de 250
  * con muchas imagenes o cambios de precio a veces no alcanza, y el corte hace
  * rollback del lote entero: reintentarlo partido es seguro.
  */
@@ -381,7 +407,6 @@ export async function ingestProducts(
   products: NormalizedProduct[],
   onSplit?: (message: string) => void,
 ): Promise<IngestCounters> {
-  const db = getSupabaseAdmin();
   const totals: IngestCounters = {
     items_found: 0,
     items_new: 0,
@@ -391,14 +416,16 @@ export async function ingestProducts(
   };
 
   const ingestChunk = async (offset: number, chunk: NormalizedProduct[]): Promise<void> => {
-    const { data, error } = await db.rpc('ingest_store_products', {
-      p_store_id: storeId,
-      p_run_id: runId,
-      p_items: chunk,
-    });
-
-    if (error) {
-      if (isStatementTimeout(error.message) && chunk.length > INGEST_MIN_CHUNK_SIZE) {
+    let data: Partial<IngestCounters> | null;
+    try {
+      data = await rpc<Partial<IngestCounters> | null>('ingest_store_products', {
+        p_store_id: storeId,
+        p_run_id: runId,
+        p_items: chunk,
+      });
+    } catch (failure) {
+      const message = pgErrorMessage(failure);
+      if (isStatementTimeout(message) && chunk.length > INGEST_MIN_CHUNK_SIZE) {
         const half = Math.ceil(chunk.length / 2);
         onSplit?.(
           `Lote ${offset}-${offset + chunk.length} excedio el tiempo de la base; se reintenta en dos de ${half}`,
@@ -408,11 +435,11 @@ export async function ingestProducts(
         return;
       }
       throw new Error(
-        `Fallo la ingesta del lote ${offset}-${offset + chunk.length}: ${error.message}`,
+        `Fallo la ingesta del lote ${offset}-${offset + chunk.length}: ${message}`,
       );
     }
 
-    const counters = (data ?? {}) as Partial<IngestCounters>;
+    const counters = data ?? {};
     totals.items_found += counters.items_found ?? 0;
     totals.items_new += counters.items_new ?? 0;
     totals.items_updated += counters.items_updated ?? 0;
@@ -433,14 +460,14 @@ export async function ingestProducts(
  * resto de la tienda.
  */
 export async function markDelistedProducts(storeId: string, runId: string): Promise<number> {
-  const { data, error } = await getSupabaseAdmin().rpc('mark_delisted_products', {
-    p_store_id: storeId,
-    p_run_id: runId,
-    p_scope_store_category_id: null,
-  });
-
-  if (error) throw new Error(`No se pudieron marcar los productos retirados: ${error.message}`);
-  return (data as number) ?? 0;
+  const data = await attempt('No se pudieron marcar los productos retirados', () =>
+    rpc<number | null>('mark_delisted_products', {
+      p_store_id: storeId,
+      p_run_id: runId,
+      p_scope_store_category_id: null,
+    }),
+  );
+  return data ?? 0;
 }
 
 /**
@@ -455,20 +482,19 @@ export async function markDelistedProducts(storeId: string, runId: string): Prom
 export async function refreshCatalog(
   triggeredBy: string,
 ): Promise<{ durationMs: number } | null> {
-  const { data, error } = await getSupabaseAdmin().rpc('refresh_catalog', {
-    p_triggered_by: triggeredBy,
-  });
-  if (error) {
+  let payload: { duration_ms?: number } | null;
+  try {
+    payload = await rpc<{ duration_ms?: number } | null>('refresh_catalog', { p_triggered_by: triggeredBy });
+  } catch (error) {
     // Si esto falla, el catálogo público queda con los precios de la corrida
     // anterior sin que nadie lo note: va a la bitácora.
     await logError({
       source: 'handled',
-      error: new Error(`No se pudo refrescar el catálogo: ${error.message}`),
+      error: new Error(`No se pudo refrescar el catálogo: ${pgErrorMessage(error)}`),
       route: 'refresh_catalog',
-      context: { triggeredBy, code: error.code },
+      context: { triggeredBy, code: pgErrorCode(error) },
     });
     return null;
   }
-  const payload = (data ?? {}) as { duration_ms?: number };
-  return { durationMs: Number(payload.duration_ms ?? 0) };
+  return { durationMs: Number(payload?.duration_ms ?? 0) };
 }

@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  customType,
   boolean,
   char,
   integer,
@@ -11,10 +12,10 @@ import {
   serial,
   smallint,
   text,
-  timestamp,
   unique,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { isoTimestamp } from './pg';
 
 /**
  * Esquema `find_your_prices` tal como queda después de las migraciones de
@@ -25,7 +26,9 @@ import {
  *
  * Convenciones, elegidas para que lo que devuelve Drizzle se parezca a lo que
  * devolvía PostgREST y los servicios no cambien de forma:
- *   - timestamptz → string (`mode: 'string'`).
+ *   - timestamptz → string ISO 8601 (`isoTimestamp`), igual que PostgREST.
+ *   - Claves en snake_case, igual que las columnas: una fila de Drizzle es
+ *     la misma fila que devolvía `select('*')`.
  *   - numeric y bigint → number (`mode: 'number'`). Ningún monto ni contador
  *     se acerca a 2^53.
  *
@@ -34,7 +37,11 @@ import {
 
 export const fyp = pgSchema('find_your_prices');
 
-const ts = (name: string) => timestamp(name, { withTimezone: true, mode: 'string' });
+const timestamptz = customType<{ data: string; driverData: string }>({
+  dataType: () => 'timestamp with time zone',
+  fromDriver: (value) => isoTimestamp(value),
+});
+const ts = (name: string) => timestamptz(name);
 const money = (name: string) => numeric(name, { precision: 14, scale: 2, mode: 'number' });
 const count = (name: string) => bigint(name, { mode: 'number' });
 
@@ -100,84 +107,84 @@ export const stores = fyp.table('stores', {
   id: uuid('id').primaryKey().defaultRandom(),
   slug: text('slug').notNull().unique(),
   name: text('name').notNull(),
-  legalName: text('legal_name'),
-  baseUrl: text('base_url').notNull(),
-  logoUrl: text('logo_url'),
-  imageAlt: text('image_alt'),
-  countryCode: char('country_code', { length: 2 }).notNull().default('HN'),
-  defaultCurrency: char('default_currency', { length: 3 }).notNull().default('HNL'),
-  defaultLocale: text('default_locale').notNull().default('es-HN'),
-  strategyKey: text('strategy_key').notNull(),
+  legal_name: text('legal_name'),
+  base_url: text('base_url').notNull(),
+  logo_url: text('logo_url'),
+  image_alt: text('image_alt'),
+  country_code: char('country_code', { length: 2 }).notNull().default('HN'),
+  default_currency: char('default_currency', { length: 3 }).notNull().default('HNL'),
+  default_locale: text('default_locale').notNull().default('es-HN'),
+  strategy_key: text('strategy_key').notNull(),
   config: jsonb('config').$type<Record<string, unknown>>().notNull().default({}),
-  requestDelayMs: integer('request_delay_ms').notNull().default(500),
-  maxConcurrency: integer('max_concurrency').notNull().default(2),
-  requestTimeoutMs: integer('request_timeout_ms').notNull().default(30000),
-  maxRetries: integer('max_retries').notNull().default(3),
-  userAgent: text('user_agent'),
-  respectRobotsTxt: boolean('respect_robots_txt').notNull().default(true),
-  isActive: boolean('is_active').notNull().default(true),
+  request_delay_ms: integer('request_delay_ms').notNull().default(500),
+  max_concurrency: integer('max_concurrency').notNull().default(2),
+  request_timeout_ms: integer('request_timeout_ms').notNull().default(30000),
+  max_retries: integer('max_retries').notNull().default(3),
+  user_agent: text('user_agent'),
+  respect_robots_txt: boolean('respect_robots_txt').notNull().default(true),
+  is_active: boolean('is_active').notNull().default(true),
   notes: text('notes'),
-  ezId: serial('ez_id').unique(),
-  createdAt: ts('created_at').notNull().defaultNow(),
-  updatedAt: ts('updated_at').notNull().defaultNow(),
+  ez_id: serial('ez_id').unique(),
+  created_at: ts('created_at').notNull().default(sql`now()`),
+  updated_at: ts('updated_at').notNull().default(sql`now()`),
 });
 
 export const scrapeTargets = fyp.table('scrape_targets', {
   id: uuid('id').primaryKey().defaultRandom(),
-  storeId: uuid('store_id')
+  store_id: uuid('store_id')
     .notNull()
     .references(() => stores.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   kind: scrapeTargetKind('kind').notNull().default('category'),
   url: text('url'),
-  strategyKey: text('strategy_key'),
+  strategy_key: text('strategy_key'),
   config: jsonb('config').$type<Record<string, unknown>>().notNull().default({}),
-  frequencyMinutes: integer('frequency_minutes'),
-  cronExpression: text('cron_expression'),
+  frequency_minutes: integer('frequency_minutes'),
+  cron_expression: text('cron_expression'),
   priority: smallint('priority').notNull().default(100),
-  maxPages: integer('max_pages'),
+  max_pages: integer('max_pages'),
   timezone: text('timezone').notNull().default('America/Tegucigalpa'),
-  scheduleAnchorAt: ts('schedule_anchor_at'),
-  nextRunAt: ts('next_run_at').notNull().defaultNow(),
-  lastRunAt: ts('last_run_at'),
-  lastSuccessAt: ts('last_success_at'),
-  lastStatus: scrapeRunStatus('last_status'),
-  consecutiveFailures: integer('consecutive_failures').notNull().default(0),
-  failureThreshold: integer('failure_threshold').notNull().default(5),
-  isActive: boolean('is_active').notNull().default(true),
-  pausedReason: text('paused_reason'),
+  schedule_anchor_at: ts('schedule_anchor_at'),
+  next_run_at: ts('next_run_at').notNull().default(sql`now()`),
+  last_run_at: ts('last_run_at'),
+  last_success_at: ts('last_success_at'),
+  last_status: scrapeRunStatus('last_status'),
+  consecutive_failures: integer('consecutive_failures').notNull().default(0),
+  failure_threshold: integer('failure_threshold').notNull().default(5),
+  is_active: boolean('is_active').notNull().default(true),
+  paused_reason: text('paused_reason'),
   notes: text('notes'),
-  createdAt: ts('created_at').notNull().defaultNow(),
-  updatedAt: ts('updated_at').notNull().defaultNow(),
+  created_at: ts('created_at').notNull().default(sql`now()`),
+  updated_at: ts('updated_at').notNull().default(sql`now()`),
 });
 
 export const scrapeRuns = fyp.table('scrape_runs', {
   id: uuid('id').primaryKey().defaultRandom(),
-  targetId: uuid('target_id').references(() => scrapeTargets.id, { onDelete: 'set null' }),
-  storeId: uuid('store_id')
+  target_id: uuid('target_id').references(() => scrapeTargets.id, { onDelete: 'set null' }),
+  store_id: uuid('store_id')
     .notNull()
     .references(() => stores.id, { onDelete: 'cascade' }),
-  strategyKey: text('strategy_key').notNull(),
+  strategy_key: text('strategy_key').notNull(),
   status: scrapeRunStatus('status').notNull().default('running'),
-  triggerSource: scrapeTrigger('trigger_source').notNull().default('cron'),
-  startedAt: ts('started_at').notNull().defaultNow(),
-  finishedAt: ts('finished_at'),
-  durationMs: integer('duration_ms'),
-  pagesFetched: integer('pages_fetched').notNull().default(0),
-  itemsFound: integer('items_found').notNull().default(0),
-  itemsNew: integer('items_new').notNull().default(0),
-  itemsUpdated: integer('items_updated').notNull().default(0),
-  itemsUnchanged: integer('items_unchanged').notNull().default(0),
-  itemsFailed: integer('items_failed').notNull().default(0),
-  itemsDelisted: integer('items_delisted').notNull().default(0),
-  priceChanges: integer('price_changes').notNull().default(0),
-  httpRequests: integer('http_requests').notNull().default(0),
-  httpErrors: integer('http_errors').notNull().default(0),
-  bytesDownloaded: count('bytes_downloaded').notNull().default(0),
-  errorMessage: text('error_message'),
-  errorLog: jsonb('error_log').$type<unknown[]>().notNull().default([]),
+  trigger_source: scrapeTrigger('trigger_source').notNull().default('cron'),
+  started_at: ts('started_at').notNull().default(sql`now()`),
+  finished_at: ts('finished_at'),
+  duration_ms: integer('duration_ms'),
+  pages_fetched: integer('pages_fetched').notNull().default(0),
+  items_found: integer('items_found').notNull().default(0),
+  items_new: integer('items_new').notNull().default(0),
+  items_updated: integer('items_updated').notNull().default(0),
+  items_unchanged: integer('items_unchanged').notNull().default(0),
+  items_failed: integer('items_failed').notNull().default(0),
+  items_delisted: integer('items_delisted').notNull().default(0),
+  price_changes: integer('price_changes').notNull().default(0),
+  http_requests: integer('http_requests').notNull().default(0),
+  http_errors: integer('http_errors').notNull().default(0),
+  bytes_downloaded: count('bytes_downloaded').notNull().default(0),
+  error_message: text('error_message'),
+  error_log: jsonb('error_log').$type<unknown[]>().notNull().default([]),
   stats: jsonb('stats').$type<Record<string, unknown>>().notNull().default({}),
-  createdAt: ts('created_at').notNull().defaultNow(),
+  created_at: ts('created_at').notNull().default(sql`now()`),
 });
 
 // -----------------------------------------------------------------------------
@@ -187,20 +194,20 @@ export const brands = fyp.table('brands', {
   id: uuid('id').primaryKey().defaultRandom(),
   slug: text('slug').notNull().unique(),
   name: text('name').notNull(),
-  normalizedName: text('normalized_name').generatedAlwaysAs(
+  normalized_name: text('normalized_name').generatedAlwaysAs(
     sql`find_your_prices.normalize_text(name)`,
   ),
-  logoUrl: text('logo_url'),
-  websiteUrl: text('website_url'),
+  logo_url: text('logo_url'),
+  website_url: text('website_url'),
   aliases: text('aliases').array().notNull().default(sql`'{}'`),
-  createdAt: ts('created_at').notNull().defaultNow(),
-  updatedAt: ts('updated_at').notNull().defaultNow(),
+  created_at: ts('created_at').notNull().default(sql`now()`),
+  updated_at: ts('updated_at').notNull().default(sql`now()`),
 });
 
 export const categories = fyp.table('categories', {
   id: uuid('id').primaryKey().defaultRandom(),
   // Autorreferencia: el tipo se cae a `any` si se declara con `.references()`.
-  parentId: uuid('parent_id'),
+  parent_id: uuid('parent_id'),
   slug: text('slug').notNull().unique(),
   name: text('name').notNull(),
   description: text('description'),
@@ -208,78 +215,78 @@ export const categories = fyp.table('categories', {
   path: text('path'),
   level: smallint('level').notNull().default(0),
   position: integer('position').notNull().default(0),
-  isActive: boolean('is_active').notNull().default(true),
-  imageUrl: text('image_url'),
-  imageAlt: text('image_alt'),
-  featuredPosition: integer('featured_position'),
-  ezId: serial('ez_id').unique(),
-  createdAt: ts('created_at').notNull().defaultNow(),
-  updatedAt: ts('updated_at').notNull().defaultNow(),
+  is_active: boolean('is_active').notNull().default(true),
+  image_url: text('image_url'),
+  image_alt: text('image_alt'),
+  featured_position: integer('featured_position'),
+  ez_id: serial('ez_id').unique(),
+  created_at: ts('created_at').notNull().default(sql`now()`),
+  updated_at: ts('updated_at').notNull().default(sql`now()`),
 });
 
 export const categoryContent = fyp.table(
   'category_content',
   {
-    categoryId: uuid('category_id')
+    category_id: uuid('category_id')
       .notNull()
       .references(() => categories.id, { onDelete: 'cascade' }),
     locale: text('locale').$type<'es' | 'en'>().notNull(),
     title: text('title'),
-    metaDescription: text('meta_description'),
+    meta_description: text('meta_description'),
     intro: text('intro'),
     body: text('body'),
     keywords: text('keywords').array().notNull().default(sql`'{}'`),
-    updatedAt: ts('updated_at').notNull().defaultNow(),
+    updated_at: ts('updated_at').notNull().default(sql`now()`),
   },
-  (t) => [primaryKey({ columns: [t.categoryId, t.locale] })],
+  (t) => [primaryKey({ columns: [t.category_id, t.locale] })],
 );
 
 export const storeCategories = fyp.table(
   'store_categories',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    storeId: uuid('store_id')
+    store_id: uuid('store_id')
       .notNull()
       .references(() => stores.id, { onDelete: 'cascade' }),
-    externalId: text('external_id').notNull(),
-    externalParentId: text('external_parent_id'),
-    parentId: uuid('parent_id'),
+    external_id: text('external_id').notNull(),
+    external_parent_id: text('external_parent_id'),
+    parent_id: uuid('parent_id'),
     name: text('name').notNull(),
     slug: text('slug'),
     url: text('url'),
     level: smallint('level').notNull().default(0),
     position: integer('position'),
-    productCount: integer('product_count'),
-    categoryId: uuid('category_id').references(() => categories.id, { onDelete: 'set null' }),
+    product_count: integer('product_count'),
+    category_id: uuid('category_id').references(() => categories.id, { onDelete: 'set null' }),
     raw: jsonb('raw').$type<Record<string, unknown>>().notNull().default({}),
-    isActive: boolean('is_active').notNull().default(true),
-    ezId: serial('ez_id').unique(),
-    lastSeenAt: ts('last_seen_at').notNull().defaultNow(),
-    createdAt: ts('created_at').notNull().defaultNow(),
-    updatedAt: ts('updated_at').notNull().defaultNow(),
+    is_active: boolean('is_active').notNull().default(true),
+    ez_id: serial('ez_id').unique(),
+    last_seen_at: ts('last_seen_at').notNull().default(sql`now()`),
+    created_at: ts('created_at').notNull().default(sql`now()`),
+    updated_at: ts('updated_at').notNull().default(sql`now()`),
   },
-  (t) => [unique('store_categories_store_external_key').on(t.storeId, t.externalId)],
+  (t) => [unique('store_categories_store_external_key').on(t.store_id, t.external_id)],
 );
 
 export const products = fyp.table('products', {
   id: uuid('id').primaryKey().defaultRandom(),
   slug: text('slug').unique(),
-  canonicalName: text('canonical_name').notNull(),
-  normalizedName: text('normalized_name').generatedAlwaysAs(
+  canonical_name: text('canonical_name').notNull(),
+  normalized_name: text('normalized_name').generatedAlwaysAs(
     sql`find_your_prices.normalize_text(canonical_name)`,
   ),
-  brandId: uuid('brand_id').references(() => brands.id, { onDelete: 'set null' }),
-  categoryId: uuid('category_id').references(() => categories.id, { onDelete: 'set null' }),
+  brand_id: uuid('brand_id').references(() => brands.id, { onDelete: 'set null' }),
+  category_id: uuid('category_id').references(() => categories.id, { onDelete: 'set null' }),
   model: text('model'),
-  partNumber: text('part_number'),
+  part_number: text('part_number'),
   gtin: text('gtin'),
   description: text('description'),
-  primaryImageUrl: text('primary_image_url'),
+  primary_image_url: text('primary_image_url'),
   attributes: jsonb('attributes').$type<Record<string, unknown>>().notNull().default({}),
   specs: jsonb('specs').$type<Record<string, unknown>>().notNull().default({}),
-  isActive: boolean('is_active').notNull().default(true),
-  createdAt: ts('created_at').notNull().defaultNow(),
-  updatedAt: ts('updated_at').notNull().defaultNow(),
+  is_active: boolean('is_active').notNull().default(true),
+  created_at: ts('created_at').notNull().default(sql`now()`),
+  updated_at: ts('updated_at').notNull().default(sql`now()`),
 });
 
 // -----------------------------------------------------------------------------
@@ -289,137 +296,137 @@ export const storeProducts = fyp.table(
   'store_products',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    storeId: uuid('store_id')
+    store_id: uuid('store_id')
       .notNull()
       .references(() => stores.id, { onDelete: 'cascade' }),
-    productId: uuid('product_id').references(() => products.id, { onDelete: 'set null' }),
+    product_id: uuid('product_id').references(() => products.id, { onDelete: 'set null' }),
 
-    externalId: text('external_id').notNull(),
-    externalCode: text('external_code'),
+    external_id: text('external_id').notNull(),
+    external_code: text('external_code'),
     sku: text('sku'),
     mpn: text('mpn'),
     gtin: text('gtin'),
-    barcodeRaw: text('barcode_raw'),
+    barcode_raw: text('barcode_raw'),
     ean: text('ean'),
     upc: text('upc'),
     isbn: text('isbn'),
     asin: text('asin'),
-    sellerName: text('seller_name'),
-    sellerId: text('seller_id'),
+    seller_name: text('seller_name'),
+    seller_id: text('seller_id'),
 
     name: text('name').notNull(),
-    normalizedName: text('normalized_name').generatedAlwaysAs(
+    normalized_name: text('normalized_name').generatedAlwaysAs(
       sql`find_your_prices.normalize_text(name)`,
     ),
-    nameAlias: text('name_alias'),
+    name_alias: text('name_alias'),
     slug: text('slug'),
-    publicSlug: text('public_slug'),
+    public_slug: text('public_slug'),
     url: text('url').notNull(),
-    canonicalUrl: text('canonical_url'),
-    shortDescription: text('short_description'),
+    canonical_url: text('canonical_url'),
+    short_description: text('short_description'),
     description: text('description'),
     highlights: text('highlights').array(),
 
-    brandRaw: text('brand_raw'),
-    brandId: uuid('brand_id').references(() => brands.id, { onDelete: 'set null' }),
+    brand_raw: text('brand_raw'),
+    brand_id: uuid('brand_id').references(() => brands.id, { onDelete: 'set null' }),
     manufacturer: text('manufacturer'),
     model: text('model'),
     color: text('color'),
     size: text('size'),
     material: text('material'),
     condition: productCondition('condition').notNull().default('new'),
-    isAdult: boolean('is_adult').notNull().default(false),
+    is_adult: boolean('is_adult').notNull().default(false),
 
-    storeCategoryId: uuid('store_category_id').references(() => storeCategories.id, {
+    store_category_id: uuid('store_category_id').references(() => storeCategories.id, {
       onDelete: 'set null',
     }),
-    categoryRaw: text('category_raw'),
-    categoryPath: text('category_path').array(),
+    category_raw: text('category_raw'),
+    category_path: text('category_path').array(),
     tags: text('tags').array(),
 
     currency: char('currency', { length: 3 }).notNull().default('HNL'),
     price: money('price'),
-    listPrice: money('list_price'),
-    discountPercent: numeric('discount_percent', { precision: 5, scale: 2, mode: 'number' }),
-    discountAmount: money('discount_amount'),
-    memberPrice: money('member_price'),
-    promoPrice: money('promo_price'),
-    installmentPrice: money('installment_price'),
-    installmentCount: smallint('installment_count'),
-    minPrice: money('min_price'),
-    maxPrice: money('max_price'),
-    pricePerUnit: numeric('price_per_unit', { precision: 14, scale: 4, mode: 'number' }),
-    unitMeasureCode: text('unit_measure_code'),
-    unitMeasureName: text('unit_measure_name'),
-    unitAmount: numeric('unit_amount', { precision: 12, scale: 3, mode: 'number' }),
-    taxRate: numeric('tax_rate', { precision: 5, scale: 2, mode: 'number' }),
-    taxIncluded: boolean('tax_included').notNull().default(true),
-    priceValidUntil: ts('price_valid_until'),
+    list_price: money('list_price'),
+    discount_percent: numeric('discount_percent', { precision: 5, scale: 2, mode: 'number' }),
+    discount_amount: money('discount_amount'),
+    member_price: money('member_price'),
+    promo_price: money('promo_price'),
+    installment_price: money('installment_price'),
+    installment_count: smallint('installment_count'),
+    min_price: money('min_price'),
+    max_price: money('max_price'),
+    price_per_unit: numeric('price_per_unit', { precision: 14, scale: 4, mode: 'number' }),
+    unit_measure_code: text('unit_measure_code'),
+    unit_measure_name: text('unit_measure_name'),
+    unit_amount: numeric('unit_amount', { precision: 12, scale: 3, mode: 'number' }),
+    tax_rate: numeric('tax_rate', { precision: 5, scale: 2, mode: 'number' }),
+    tax_included: boolean('tax_included').notNull().default(true),
+    price_valid_until: ts('price_valid_until'),
 
     availability: availabilityStatus('availability').notNull().default('unknown'),
-    inStock: boolean('in_stock'),
-    stockQuantity: integer('stock_quantity'),
-    minOrderQuantity: integer('min_order_quantity'),
-    maxOrderQuantity: integer('max_order_quantity'),
-    locationAvailability: jsonb('location_availability').$type<unknown[]>().notNull().default([]),
+    in_stock: boolean('in_stock'),
+    stock_quantity: integer('stock_quantity'),
+    min_order_quantity: integer('min_order_quantity'),
+    max_order_quantity: integer('max_order_quantity'),
+    location_availability: jsonb('location_availability').$type<unknown[]>().notNull().default([]),
 
-    ratingAverage: numeric('rating_average', { precision: 3, scale: 2, mode: 'number' }),
-    ratingCount: integer('rating_count'),
-    reviewCount: integer('review_count'),
+    rating_average: numeric('rating_average', { precision: 3, scale: 2, mode: 'number' }),
+    rating_count: integer('rating_count'),
+    review_count: integer('review_count'),
 
-    primaryImageUrl: text('primary_image_url'),
+    primary_image_url: text('primary_image_url'),
     images: jsonb('images').$type<unknown[]>().notNull().default([]),
-    imageCount: integer('image_count').notNull().default(0),
-    videoUrls: text('video_urls').array(),
+    image_count: integer('image_count').notNull().default(0),
+    video_urls: text('video_urls').array(),
 
-    hasFreeShipping: boolean('has_free_shipping'),
-    shippingCost: money('shipping_cost'),
-    shippingInfo: jsonb('shipping_info').$type<Record<string, unknown>>().notNull().default({}),
-    warrantyMonths: smallint('warranty_months'),
-    warrantyInfo: jsonb('warranty_info').$type<Record<string, unknown>>().notNull().default({}),
-    weightGrams: numeric('weight_grams', { precision: 12, scale: 3, mode: 'number' }),
-    lengthMm: numeric('length_mm', { precision: 12, scale: 2, mode: 'number' }),
-    widthMm: numeric('width_mm', { precision: 12, scale: 2, mode: 'number' }),
-    heightMm: numeric('height_mm', { precision: 12, scale: 2, mode: 'number' }),
+    has_free_shipping: boolean('has_free_shipping'),
+    shipping_cost: money('shipping_cost'),
+    shipping_info: jsonb('shipping_info').$type<Record<string, unknown>>().notNull().default({}),
+    warranty_months: smallint('warranty_months'),
+    warranty_info: jsonb('warranty_info').$type<Record<string, unknown>>().notNull().default({}),
+    weight_grams: numeric('weight_grams', { precision: 12, scale: 3, mode: 'number' }),
+    length_mm: numeric('length_mm', { precision: 12, scale: 2, mode: 'number' }),
+    width_mm: numeric('width_mm', { precision: 12, scale: 2, mode: 'number' }),
+    height_mm: numeric('height_mm', { precision: 12, scale: 2, mode: 'number' }),
 
     specs: jsonb('specs').$type<Record<string, unknown>>().notNull().default({}),
     attributes: jsonb('attributes').$type<Record<string, unknown>>().notNull().default({}),
     badges: text('badges').array(),
-    metaTitle: text('meta_title'),
-    metaDescription: text('meta_description'),
+    meta_title: text('meta_title'),
+    meta_description: text('meta_description'),
     raw: jsonb('raw').$type<Record<string, unknown>>().notNull().default({}),
 
-    clickCount: integer('click_count').notNull().default(0),
-    lastClickedAt: ts('last_clicked_at'),
+    click_count: integer('click_count').notNull().default(0),
+    last_clicked_at: ts('last_clicked_at'),
 
-    contentHash: text('content_hash'),
-    firstSeenAt: ts('first_seen_at').notNull().defaultNow(),
-    lastSeenAt: ts('last_seen_at').notNull().defaultNow(),
-    lastScrapedAt: ts('last_scraped_at').notNull().defaultNow(),
-    lastPriceChangeAt: ts('last_price_change_at'),
-    lastScrapeRunId: uuid('last_scrape_run_id').references(() => scrapeRuns.id, {
+    content_hash: text('content_hash'),
+    first_seen_at: ts('first_seen_at').notNull().default(sql`now()`),
+    last_seen_at: ts('last_seen_at').notNull().default(sql`now()`),
+    last_scraped_at: ts('last_scraped_at').notNull().default(sql`now()`),
+    last_price_change_at: ts('last_price_change_at'),
+    last_scrape_run_id: uuid('last_scrape_run_id').references(() => scrapeRuns.id, {
       onDelete: 'set null',
     }),
-    isActive: boolean('is_active').notNull().default(true),
-    delistedAt: ts('delisted_at'),
+    is_active: boolean('is_active').notNull().default(true),
+    delisted_at: ts('delisted_at'),
 
-    createdAt: ts('created_at').notNull().defaultNow(),
-    updatedAt: ts('updated_at').notNull().defaultNow(),
+    created_at: ts('created_at').notNull().default(sql`now()`),
+    updated_at: ts('updated_at').notNull().default(sql`now()`),
   },
-  (t) => [unique('store_products_store_external_key').on(t.storeId, t.externalId)],
+  (t) => [unique('store_products_store_external_key').on(t.store_id, t.external_id)],
 );
 
 export const storeProductVariants = fyp.table(
   'store_product_variants',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    storeProductId: uuid('store_product_id')
+    store_product_id: uuid('store_product_id')
       .notNull()
       .references(() => storeProducts.id, { onDelete: 'cascade' }),
-    externalId: text('external_id').notNull(),
+    external_id: text('external_id').notNull(),
     sku: text('sku'),
     gtin: text('gtin'),
-    barcodeRaw: text('barcode_raw'),
+    barcode_raw: text('barcode_raw'),
     name: text('name'),
     color: text('color'),
     size: text('size'),
@@ -427,65 +434,65 @@ export const storeProductVariants = fyp.table(
     options: jsonb('options').$type<Record<string, unknown>>().notNull().default({}),
     currency: char('currency', { length: 3 }),
     price: money('price'),
-    listPrice: money('list_price'),
+    list_price: money('list_price'),
     availability: availabilityStatus('availability').notNull().default('unknown'),
-    inStock: boolean('in_stock'),
-    stockQuantity: integer('stock_quantity'),
-    imageUrl: text('image_url'),
+    in_stock: boolean('in_stock'),
+    stock_quantity: integer('stock_quantity'),
+    image_url: text('image_url'),
     raw: jsonb('raw').$type<Record<string, unknown>>().notNull().default({}),
-    isActive: boolean('is_active').notNull().default(true),
-    lastSeenAt: ts('last_seen_at').notNull().defaultNow(),
-    createdAt: ts('created_at').notNull().defaultNow(),
-    updatedAt: ts('updated_at').notNull().defaultNow(),
+    is_active: boolean('is_active').notNull().default(true),
+    last_seen_at: ts('last_seen_at').notNull().default(sql`now()`),
+    created_at: ts('created_at').notNull().default(sql`now()`),
+    updated_at: ts('updated_at').notNull().default(sql`now()`),
   },
-  (t) => [unique('store_product_variants_unique').on(t.storeProductId, t.externalId)],
+  (t) => [unique('store_product_variants_unique').on(t.store_product_id, t.external_id)],
 );
 
 export const priceHistory = fyp.table('price_history', {
   id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
-  storeProductId: uuid('store_product_id')
+  store_product_id: uuid('store_product_id')
     .notNull()
     .references(() => storeProducts.id, { onDelete: 'cascade' }),
-  storeId: uuid('store_id')
+  store_id: uuid('store_id')
     .notNull()
     .references(() => stores.id, { onDelete: 'cascade' }),
-  scrapeRunId: uuid('scrape_run_id').references(() => scrapeRuns.id, { onDelete: 'set null' }),
+  scrape_run_id: uuid('scrape_run_id').references(() => scrapeRuns.id, { onDelete: 'set null' }),
   currency: char('currency', { length: 3 }).notNull(),
   price: money('price'),
-  listPrice: money('list_price'),
-  discountPercent: numeric('discount_percent', { precision: 5, scale: 2, mode: 'number' }),
-  memberPrice: money('member_price'),
-  promoPrice: money('promo_price'),
+  list_price: money('list_price'),
+  discount_percent: numeric('discount_percent', { precision: 5, scale: 2, mode: 'number' }),
+  member_price: money('member_price'),
+  promo_price: money('promo_price'),
   availability: availabilityStatus('availability').notNull().default('unknown'),
-  inStock: boolean('in_stock'),
-  stockQuantity: integer('stock_quantity'),
-  previousPrice: money('previous_price'),
-  priceDelta: money('price_delta'),
-  priceDeltaPct: numeric('price_delta_pct', { precision: 7, scale: 2, mode: 'number' }),
-  scrapedAt: ts('scraped_at').notNull().defaultNow(),
+  in_stock: boolean('in_stock'),
+  stock_quantity: integer('stock_quantity'),
+  previous_price: money('previous_price'),
+  price_delta: money('price_delta'),
+  price_delta_pct: numeric('price_delta_pct', { precision: 7, scale: 2, mode: 'number' }),
+  scraped_at: ts('scraped_at').notNull().default(sql`now()`),
 });
 
 export const productMatchCandidates = fyp.table(
   'product_match_candidates',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    storeProductId: uuid('store_product_id')
+    store_product_id: uuid('store_product_id')
       .notNull()
       .references(() => storeProducts.id, { onDelete: 'cascade' }),
-    productId: uuid('product_id')
+    product_id: uuid('product_id')
       .notNull()
       .references(() => products.id, { onDelete: 'cascade' }),
     confidence: numeric('confidence', { precision: 5, scale: 4, mode: 'number' }).notNull(),
-    matchedBy: matchMethod('matched_by').notNull(),
+    matched_by: matchMethod('matched_by').notNull(),
     status: matchStatus('status').notNull().default('pending'),
     evidence: jsonb('evidence').$type<Record<string, unknown>>().notNull().default({}),
-    reviewedAt: ts('reviewed_at'),
-    reviewedBy: text('reviewed_by'),
-    reviewNotes: text('review_notes'),
-    createdAt: ts('created_at').notNull().defaultNow(),
-    updatedAt: ts('updated_at').notNull().defaultNow(),
+    reviewed_at: ts('reviewed_at'),
+    reviewed_by: text('reviewed_by'),
+    review_notes: text('review_notes'),
+    created_at: ts('created_at').notNull().default(sql`now()`),
+    updated_at: ts('updated_at').notNull().default(sql`now()`),
   },
-  (t) => [unique('product_match_candidates_unique').on(t.storeProductId, t.productId)],
+  (t) => [unique('product_match_candidates_unique').on(t.store_product_id, t.product_id)],
 );
 
 // -----------------------------------------------------------------------------
@@ -493,75 +500,87 @@ export const productMatchCandidates = fyp.table(
 // -----------------------------------------------------------------------------
 export const catalogRefreshLog = fyp.table('catalog_refresh_log', {
   id: boolean('id').primaryKey().default(true),
-  refreshedAt: ts('refreshed_at').notNull().defaultNow(),
-  durationMs: integer('duration_ms'),
-  triggeredBy: text('triggered_by'),
+  refreshed_at: ts('refreshed_at').notNull().default(sql`now()`),
+  duration_ms: integer('duration_ms'),
+  triggered_by: text('triggered_by'),
 });
 
 export const exchangeRates = fyp.table('exchange_rates', {
   currency: char('currency', { length: 3 }).primaryKey(),
-  rateToHnl: numeric('rate_to_hnl', { precision: 14, scale: 6, mode: 'number' }).notNull(),
+  rate_to_hnl: numeric('rate_to_hnl', { precision: 14, scale: 6, mode: 'number' }).notNull(),
   source: text('source'),
-  updatedAt: ts('updated_at').notNull().defaultNow(),
+  updated_at: ts('updated_at').notNull().default(sql`now()`),
 });
 
 export const catalogFeaturedTerms = fyp.table(
   'catalog_featured_terms',
   {
     id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
-    storeSlug: text('store_slug')
+    store_slug: text('store_slug')
       .notNull()
       .references(() => stores.slug, { onUpdate: 'cascade', onDelete: 'cascade' }),
     pattern: text('pattern').notNull(),
     tier: smallint('tier').notNull(),
     note: text('note'),
-    updatedAt: ts('updated_at').notNull().defaultNow(),
+    updated_at: ts('updated_at').notNull().default(sql`now()`),
   },
-  (t) => [unique('catalog_featured_terms_unique').on(t.storeSlug, t.pattern)],
+  (t) => [unique('catalog_featured_terms_unique').on(t.store_slug, t.pattern)],
 );
+
+/**
+ * Columnas comunes de `v_store_products_current` y `mv_catalog`: la
+ * materializada nació como copia de la vista (0030) y le fue sumando columnas.
+ * Es una función porque cada tabla necesita sus propias instancias.
+ */
+const catalogColumns = () => ({
+  id: uuid('id').notNull(),
+  store_id: uuid('store_id').notNull(),
+  store_slug: text('store_slug').notNull(),
+  store_name: text('store_name').notNull(),
+  store_logo_url: text('store_logo_url'),
+  product_id: uuid('product_id'),
+  external_id: text('external_id').notNull(),
+  name: text('name').notNull(),
+  url: text('url').notNull(),
+  primary_image_url: text('primary_image_url'),
+  brand: text('brand'),
+  category_raw: text('category_raw'),
+  store_category_name: text('store_category_name'),
+  category_slug: text('category_slug'),
+  currency: char('currency', { length: 3 }).notNull(),
+  price: money('price'),
+  list_price: money('list_price'),
+  discount_percent: numeric('discount_percent', { precision: 5, scale: 2, mode: 'number' }),
+  member_price: money('member_price'),
+  availability: availabilityStatus('availability').notNull(),
+  in_stock: boolean('in_stock'),
+  stock_quantity: integer('stock_quantity'),
+  rating_average: numeric('rating_average', { precision: 3, scale: 2, mode: 'number' }),
+  rating_count: integer('rating_count'),
+  gtin: text('gtin'),
+  last_seen_at: ts('last_seen_at').notNull(),
+  last_price_change_at: ts('last_price_change_at'),
+  first_seen_at: ts('first_seen_at').notNull(),
+  public_slug: text('public_slug'),
+  category_name: text('category_name'),
+  category_root_slug: text('category_root_slug'),
+  category_root_name: text('category_root_name'),
+  normalized_name: text('normalized_name'),
+});
+
+/** Artículos activos con tienda, marca y categoría resueltas (0026). Respaldo del catálogo y fuente del sitemap. */
+export const vStoreProductsCurrent = fyp.view('v_store_products_current', catalogColumns()).existing();
 
 /** Copia plana del catálogo público. La refresca `refresh_catalog()`. */
 export const mvCatalog = fyp
   .materializedView('mv_catalog', {
-    id: uuid('id').notNull(),
-    storeId: uuid('store_id').notNull(),
-    storeSlug: text('store_slug').notNull(),
-    storeName: text('store_name').notNull(),
-    storeLogoUrl: text('store_logo_url'),
-    productId: uuid('product_id'),
-    externalId: text('external_id').notNull(),
-    name: text('name').notNull(),
-    url: text('url').notNull(),
-    primaryImageUrl: text('primary_image_url'),
-    brand: text('brand'),
-    categoryRaw: text('category_raw'),
-    storeCategoryName: text('store_category_name'),
-    categorySlug: text('category_slug'),
-    currency: char('currency', { length: 3 }).notNull(),
-    price: money('price'),
-    listPrice: money('list_price'),
-    discountPercent: numeric('discount_percent', { precision: 5, scale: 2, mode: 'number' }),
-    memberPrice: money('member_price'),
-    availability: availabilityStatus('availability').notNull(),
-    inStock: boolean('in_stock'),
-    stockQuantity: integer('stock_quantity'),
-    ratingAverage: numeric('rating_average', { precision: 3, scale: 2, mode: 'number' }),
-    ratingCount: integer('rating_count'),
-    gtin: text('gtin'),
-    lastSeenAt: ts('last_seen_at').notNull(),
-    lastPriceChangeAt: ts('last_price_change_at'),
-    firstSeenAt: ts('first_seen_at').notNull(),
-    publicSlug: text('public_slug'),
-    categoryName: text('category_name'),
-    categoryRootSlug: text('category_root_slug'),
-    categoryRootName: text('category_root_name'),
-    normalizedName: text('normalized_name'),
-    storeCategoryId: uuid('store_category_id'),
-    categoryId: uuid('category_id'),
-    priceHnl: numeric('price_hnl', { mode: 'number' }),
+    ...catalogColumns(),
+    store_category_id: uuid('store_category_id'),
+    category_id: uuid('category_id'),
+    price_hnl: numeric('price_hnl', { mode: 'number' }),
     region: text('region'),
-    regionRank: smallint('region_rank').notNull(),
-    featuredRank: integer('featured_rank').notNull(),
+    region_rank: smallint('region_rank').notNull(),
+    featured_rank: integer('featured_rank').notNull(),
   })
   .existing();
 
@@ -578,33 +597,33 @@ export const catalogWords = fyp
 // -----------------------------------------------------------------------------
 export const vScrapeTargetHealth = fyp
   .view('v_scrape_target_health', {
-    targetId: uuid('target_id').notNull(),
-    targetName: text('target_name').notNull(),
+    target_id: uuid('target_id').notNull(),
+    target_name: text('target_name').notNull(),
     kind: scrapeTargetKind('kind').notNull(),
     url: text('url'),
-    isActive: boolean('is_active').notNull(),
-    frequencyMinutes: integer('frequency_minutes'),
-    nextRunAt: ts('next_run_at').notNull(),
-    lastRunAt: ts('last_run_at'),
-    lastSuccessAt: ts('last_success_at'),
-    lastStatus: scrapeRunStatus('last_status'),
-    consecutiveFailures: integer('consecutive_failures').notNull(),
-    pausedReason: text('paused_reason'),
-    storeId: uuid('store_id').notNull(),
-    storeSlug: text('store_slug').notNull(),
-    storeName: text('store_name').notNull(),
-    strategyKey: text('strategy_key').notNull(),
-    lastRunId: uuid('last_run_id'),
-    lastDurationMs: integer('last_duration_ms'),
-    lastItemsFound: integer('last_items_found'),
-    lastItemsNew: integer('last_items_new'),
-    lastItemsUpdated: integer('last_items_updated'),
-    lastPriceChanges: integer('last_price_changes'),
-    lastErrorMessage: text('last_error_message'),
-    storeActiveProducts: count('store_active_products').notNull(),
-    scheduleAnchorAt: ts('schedule_anchor_at'),
+    is_active: boolean('is_active').notNull(),
+    frequency_minutes: integer('frequency_minutes'),
+    next_run_at: ts('next_run_at').notNull(),
+    last_run_at: ts('last_run_at'),
+    last_success_at: ts('last_success_at'),
+    last_status: scrapeRunStatus('last_status'),
+    consecutive_failures: integer('consecutive_failures').notNull(),
+    paused_reason: text('paused_reason'),
+    store_id: uuid('store_id').notNull(),
+    store_slug: text('store_slug').notNull(),
+    store_name: text('store_name').notNull(),
+    strategy_key: text('strategy_key').notNull(),
+    last_run_id: uuid('last_run_id'),
+    last_duration_ms: integer('last_duration_ms'),
+    last_items_found: integer('last_items_found'),
+    last_items_new: integer('last_items_new'),
+    last_items_updated: integer('last_items_updated'),
+    last_price_changes: integer('last_price_changes'),
+    last_error_message: text('last_error_message'),
+    store_active_products: count('store_active_products').notNull(),
+    schedule_anchor_at: ts('schedule_anchor_at'),
     priority: smallint('priority').notNull(),
-    maxPages: integer('max_pages'),
+    max_pages: integer('max_pages'),
     config: jsonb('config').$type<Record<string, unknown>>().notNull(),
     notes: text('notes'),
   })
@@ -612,63 +631,63 @@ export const vScrapeTargetHealth = fyp
 
 export const vCatalogCanonicalCategoryFacets = fyp
   .view('v_catalog_canonical_category_facets', {
-    categoryId: uuid('category_id'),
+    category_id: uuid('category_id'),
     slug: text('slug'),
     name: text('name'),
     level: smallint('level'),
     position: integer('position'),
-    parentId: uuid('parent_id'),
-    parentSlug: text('parent_slug'),
-    parentName: text('parent_name'),
-    parentPosition: integer('parent_position'),
-    productCount: count('product_count').notNull(),
-    discountedCount: count('discounted_count').notNull(),
-    minPrice: money('min_price'),
-    maxPrice: money('max_price'),
+    parent_id: uuid('parent_id'),
+    parent_slug: text('parent_slug'),
+    parent_name: text('parent_name'),
+    parent_position: integer('parent_position'),
+    product_count: count('product_count').notNull(),
+    discounted_count: count('discounted_count').notNull(),
+    min_price: money('min_price'),
+    max_price: money('max_price'),
   })
   .existing();
 
 export const vCatalogStoreFacets = fyp
   .view('v_catalog_store_facets', {
-    storeId: uuid('store_id').notNull(),
-    storeSlug: text('store_slug').notNull(),
-    storeName: text('store_name').notNull(),
-    logoUrl: text('logo_url'),
-    productCount: count('product_count').notNull(),
-    discountedCount: count('discounted_count').notNull(),
-    minPrice: numeric('min_price', { mode: 'number' }),
-    maxPrice: numeric('max_price', { mode: 'number' }),
+    store_id: uuid('store_id').notNull(),
+    store_slug: text('store_slug').notNull(),
+    store_name: text('store_name').notNull(),
+    logo_url: text('logo_url'),
+    product_count: count('product_count').notNull(),
+    discounted_count: count('discounted_count').notNull(),
+    min_price: numeric('min_price', { mode: 'number' }),
+    max_price: numeric('max_price', { mode: 'number' }),
   })
   .existing();
 
 export const vCatalogBrandFacets = fyp
   .view('v_catalog_brand_facets', {
-    brandName: text('brand_name').notNull(),
-    productCount: count('product_count').notNull(),
-    minPrice: numeric('min_price', { mode: 'number' }),
-    maxPrice: numeric('max_price', { mode: 'number' }),
+    brand_name: text('brand_name').notNull(),
+    product_count: count('product_count').notNull(),
+    min_price: numeric('min_price', { mode: 'number' }),
+    max_price: numeric('max_price', { mode: 'number' }),
   })
   .existing();
 
 export const vCatalogSummary = fyp
   .view('v_catalog_summary', {
-    totalProducts: count('total_products').notNull(),
-    totalStores: count('total_stores').notNull(),
-    totalCategories: count('total_categories').notNull(),
-    discountedProducts: count('discounted_products').notNull(),
-    inStockProducts: count('in_stock_products').notNull(),
-    minPrice: numeric('min_price', { mode: 'number' }),
-    maxPrice: numeric('max_price', { mode: 'number' }),
-    lastSeenAt: ts('last_seen_at'),
+    total_products: count('total_products').notNull(),
+    total_stores: count('total_stores').notNull(),
+    total_categories: count('total_categories').notNull(),
+    discounted_products: count('discounted_products').notNull(),
+    in_stock_products: count('in_stock_products').notNull(),
+    min_price: numeric('min_price', { mode: 'number' }),
+    max_price: numeric('max_price', { mode: 'number' }),
+    last_seen_at: ts('last_seen_at'),
   })
   .existing();
 
 export const vCatalogStoreCategoryFacets = fyp
   .view('v_catalog_store_category_facets', {
-    storeSlug: text('store_slug').notNull(),
+    store_slug: text('store_slug').notNull(),
     slug: text('slug').notNull(),
-    productCount: count('product_count').notNull(),
-    discountedCount: count('discounted_count').notNull(),
+    product_count: count('product_count').notNull(),
+    discounted_count: count('discounted_count').notNull(),
   })
   .existing();
 
@@ -679,58 +698,58 @@ export const affiliatePartners = fyp.table('affiliate_partners', {
   id: uuid('id').primaryKey().defaultRandom(),
   slug: text('slug').notNull().unique(),
   name: text('name').notNull(),
-  websiteUrl: text('website_url').notNull(),
-  affiliateUrl: text('affiliate_url'),
-  promoCode: text('promo_code'),
-  promoTextEs: text('promo_text_es'),
-  promoTextEn: text('promo_text_en'),
-  taglineEs: text('tagline_es'),
-  taglineEn: text('tagline_en'),
-  descriptionEs: text('description_es'),
-  descriptionEn: text('description_en'),
-  logoUrl: text('logo_url'),
-  imageAlt: text('image_alt'),
-  isActive: boolean('is_active').notNull().default(false),
-  isFeatured: boolean('is_featured').notNull().default(false),
-  sortOrder: integer('sort_order').notNull().default(0),
-  startsAt: ts('starts_at'),
-  endsAt: ts('ends_at'),
-  clickCount: count('click_count').notNull().default(0),
-  lastClickedAt: ts('last_clicked_at'),
-  createdAt: ts('created_at').notNull().defaultNow(),
-  updatedAt: ts('updated_at').notNull().defaultNow(),
+  website_url: text('website_url').notNull(),
+  affiliate_url: text('affiliate_url'),
+  promo_code: text('promo_code'),
+  promo_text_es: text('promo_text_es'),
+  promo_text_en: text('promo_text_en'),
+  tagline_es: text('tagline_es'),
+  tagline_en: text('tagline_en'),
+  description_es: text('description_es'),
+  description_en: text('description_en'),
+  logo_url: text('logo_url'),
+  image_alt: text('image_alt'),
+  is_active: boolean('is_active').notNull().default(false),
+  is_featured: boolean('is_featured').notNull().default(false),
+  sort_order: integer('sort_order').notNull().default(0),
+  starts_at: ts('starts_at'),
+  ends_at: ts('ends_at'),
+  click_count: count('click_count').notNull().default(0),
+  last_clicked_at: ts('last_clicked_at'),
+  created_at: ts('created_at').notNull().default(sql`now()`),
+  updated_at: ts('updated_at').notNull().default(sql`now()`),
 });
 
 export const affiliateOffers = fyp.table('affiliate_offers', {
   id: uuid('id').primaryKey().defaultRandom(),
-  partnerId: uuid('partner_id')
+  partner_id: uuid('partner_id')
     .notNull()
     .references(() => affiliatePartners.id, { onDelete: 'cascade' }),
-  titleEs: text('title_es').notNull(),
-  titleEn: text('title_en'),
-  noteEs: text('note_es'),
-  noteEn: text('note_en'),
+  title_es: text('title_es').notNull(),
+  title_en: text('title_en'),
+  note_es: text('note_es'),
+  note_en: text('note_en'),
   url: text('url').notNull(),
-  imageUrl: text('image_url'),
+  image_url: text('image_url'),
   price: numeric('price', { precision: 12, scale: 2, mode: 'number' }),
-  listPrice: numeric('list_price', { precision: 12, scale: 2, mode: 'number' }),
+  list_price: numeric('list_price', { precision: 12, scale: 2, mode: 'number' }),
   currency: text('currency').notNull().default('USD'),
-  promoCode: text('promo_code'),
-  isActive: boolean('is_active').notNull().default(true),
-  sortOrder: integer('sort_order').notNull().default(0),
-  clickCount: count('click_count').notNull().default(0),
-  lastClickedAt: ts('last_clicked_at'),
-  createdAt: ts('created_at').notNull().defaultNow(),
-  updatedAt: ts('updated_at').notNull().defaultNow(),
+  promo_code: text('promo_code'),
+  is_active: boolean('is_active').notNull().default(true),
+  sort_order: integer('sort_order').notNull().default(0),
+  click_count: count('click_count').notNull().default(0),
+  last_clicked_at: ts('last_clicked_at'),
+  created_at: ts('created_at').notNull().default(sql`now()`),
+  updated_at: ts('updated_at').notNull().default(sql`now()`),
 });
 
 export const affiliateApplications = fyp.table('affiliate_applications', {
   id: uuid('id').primaryKey().defaultRandom(),
-  createdAt: ts('created_at').notNull().defaultNow(),
-  updatedAt: ts('updated_at').notNull().defaultNow(),
-  storeName: text('store_name').notNull(),
+  created_at: ts('created_at').notNull().default(sql`now()`),
+  updated_at: ts('updated_at').notNull().default(sql`now()`),
+  store_name: text('store_name').notNull(),
   website: text('website'),
-  contactName: text('contact_name').notNull(),
+  contact_name: text('contact_name').notNull(),
   email: text('email').notNull(),
   phone: text('phone'),
   category: text('category'),
@@ -741,7 +760,7 @@ export const affiliateApplications = fyp.table('affiliate_applications', {
     .notNull()
     .default('new'),
   notes: text('notes'),
-  visitorHash: text('visitor_hash'),
+  visitor_hash: text('visitor_hash'),
 });
 
 // -----------------------------------------------------------------------------
@@ -749,44 +768,44 @@ export const affiliateApplications = fyp.table('affiliate_applications', {
 // -----------------------------------------------------------------------------
 export const pageViews = fyp.table('page_views', {
   id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
-  createdAt: ts('created_at').notNull().defaultNow(),
+  created_at: ts('created_at').notNull().default(sql`now()`),
   path: text('path').notNull(),
-  pageType: text('page_type').notNull(),
+  page_type: text('page_type').notNull(),
   locale: text('locale'),
-  referrerHost: text('referrer_host'),
-  utmSource: text('utm_source'),
-  utmMedium: text('utm_medium'),
-  utmCampaign: text('utm_campaign'),
+  referrer_host: text('referrer_host'),
+  utm_source: text('utm_source'),
+  utm_medium: text('utm_medium'),
+  utm_campaign: text('utm_campaign'),
   country: text('country'),
   region: text('region'),
   city: text('city'),
   device: text('device').notNull(),
   browser: text('browser'),
   os: text('os'),
-  screenWidth: integer('screen_width'),
-  visitorHash: text('visitor_hash').notNull(),
-  sessionId: text('session_id'),
-  isBot: boolean('is_bot').notNull().default(false),
-  botName: text('bot_name'),
+  screen_width: integer('screen_width'),
+  visitor_hash: text('visitor_hash').notNull(),
+  session_id: text('session_id'),
+  is_bot: boolean('is_bot').notNull().default(false),
+  bot_name: text('bot_name'),
 });
 
 export const affiliateClickEvents = fyp.table('affiliate_click_events', {
   id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
-  createdAt: ts('created_at').notNull().defaultNow(),
-  partnerId: uuid('partner_id')
+  created_at: ts('created_at').notNull().default(sql`now()`),
+  partner_id: uuid('partner_id')
     .notNull()
     .references(() => affiliatePartners.id, { onDelete: 'cascade' }),
-  offerId: uuid('offer_id').references(() => affiliateOffers.id, { onDelete: 'set null' }),
+  offer_id: uuid('offer_id').references(() => affiliateOffers.id, { onDelete: 'set null' }),
   country: text('country'),
   device: text('device'),
-  visitorHash: text('visitor_hash').notNull(),
-  isBot: boolean('is_bot').notNull().default(false),
-  botName: text('bot_name'),
+  visitor_hash: text('visitor_hash').notNull(),
+  is_bot: boolean('is_bot').notNull().default(false),
+  bot_name: text('bot_name'),
 });
 
 export const errorLogs = fyp.table('error_logs', {
   id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
-  createdAt: ts('created_at').notNull().defaultNow(),
+  created_at: ts('created_at').notNull().default(sql`now()`),
   source: text('source').notNull(),
   level: text('level').$type<'error' | 'warning'>().notNull().default('error'),
   message: text('message').notNull(),
@@ -797,6 +816,6 @@ export const errorLogs = fyp.table('error_logs', {
   method: text('method'),
   stack: text('stack'),
   context: jsonb('context').$type<Record<string, unknown>>(),
-  userAgent: text('user_agent'),
-  resolvedAt: ts('resolved_at'),
+  user_agent: text('user_agent'),
+  resolved_at: ts('resolved_at'),
 });

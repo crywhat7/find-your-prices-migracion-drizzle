@@ -1,5 +1,10 @@
 import 'server-only';
 import { revalidatePath } from 'next/cache';
+import { and, asc, count, desc, eq, gte, inArray } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { pgErrorCode, pgErrorMessage } from '@/server/db/pg';
+import { rpc } from '@/server/db/rpc';
+import { affiliateApplications, affiliateOffers, affiliatePartners } from '@/server/db/schema';
 import { getSupabaseAdmin } from '@/server/db/supabase';
 import { SITE_ROUTES } from '@/features/i18n/routes';
 import {
@@ -21,6 +26,9 @@ import { hasDatabase } from './catalog';
  * cliente de servidor, igual que `storeContent.ts`. Las páginas públicas solo
  * ven aliados activos y dentro de su ventana de campaña, y de ellos solo los
  * productos activos.
+ *
+ * Las filas van por Drizzle; los logos siguen en Supabase Storage hasta la
+ * fase 3 de docs/migracion-drizzle.md (R2).
  */
 
 export const AFFILIATE_IMAGES_BUCKET = 'affiliate-images';
@@ -72,17 +80,54 @@ export interface AffiliatePartner {
   offers: AffiliateOffer[];
 }
 
-const PARTNER_COLUMNS =
-  'id, slug, name, website_url, affiliate_url, promo_code, promo_text_es, promo_text_en, tagline_es, tagline_en, description_es, description_en, logo_url, image_alt, is_active, is_featured, sort_order, starts_at, ends_at, click_count';
-const OFFER_COLUMNS =
-  'id, partner_id, title_es, title_en, note_es, note_en, url, image_url, price, list_price, currency, promo_code, is_active, sort_order, click_count';
+const p = affiliatePartners;
+const o = affiliateOffers;
+
+const PARTNER_COLUMNS = {
+  id: p.id,
+  slug: p.slug,
+  name: p.name,
+  website_url: p.website_url,
+  affiliate_url: p.affiliate_url,
+  promo_code: p.promo_code,
+  promo_text_es: p.promo_text_es,
+  promo_text_en: p.promo_text_en,
+  tagline_es: p.tagline_es,
+  tagline_en: p.tagline_en,
+  description_es: p.description_es,
+  description_en: p.description_en,
+  logo_url: p.logo_url,
+  image_alt: p.image_alt,
+  is_active: p.is_active,
+  is_featured: p.is_featured,
+  sort_order: p.sort_order,
+  starts_at: p.starts_at,
+  ends_at: p.ends_at,
+  click_count: p.click_count,
+};
+const OFFER_COLUMNS = {
+  id: o.id,
+  partner_id: o.partner_id,
+  title_es: o.title_es,
+  title_en: o.title_en,
+  note_es: o.note_es,
+  note_en: o.note_en,
+  url: o.url,
+  image_url: o.image_url,
+  price: o.price,
+  list_price: o.list_price,
+  currency: o.currency,
+  promo_code: o.promo_code,
+  is_active: o.is_active,
+  sort_order: o.sort_order,
+  click_count: o.click_count,
+};
 
 /** Sin la 0047 la tabla no existe: las páginas muestran "sin aliados" y no caen. */
 const MISSING_TABLE = '42P01';
-const MISSING_RELATION_POSTGREST = 'PGRST205';
 
-function isMissingTable(error: { code?: string } | null): boolean {
-  return Boolean(error && (error.code === MISSING_TABLE || error.code === MISSING_RELATION_POSTGREST));
+function isMissingTable(error: unknown): boolean {
+  return pgErrorCode(error) === MISSING_TABLE;
 }
 
 function toNumber(value: unknown): number | null {
@@ -143,18 +188,20 @@ function mapPartner(row: Record<string, unknown>, offers: AffiliateOffer[]): Aff
 
 /** Todos los aliados con todos sus productos, para el panel. */
 export async function listPartnersForAdmin(): Promise<AffiliatePartner[]> {
-  const db = getSupabaseAdmin();
-  const [partners, offers] = await Promise.all([
-    db.from('affiliate_partners').select(PARTNER_COLUMNS).order('sort_order').order('name'),
-    db.from('affiliate_offers').select(OFFER_COLUMNS).order('sort_order').order('created_at'),
-  ]);
-  if (partners.error) throw new Error(explain(partners.error));
-  if (offers.error) throw new Error(explain(offers.error));
+  const db = getDb();
+  let partners: Array<Record<string, unknown>>;
+  let offers: Array<Record<string, unknown>>;
+  try {
+    [partners, offers] = await Promise.all([
+      db.select(PARTNER_COLUMNS).from(p).orderBy(asc(p.sort_order), asc(p.name)),
+      db.select(OFFER_COLUMNS).from(o).orderBy(asc(o.sort_order), asc(o.created_at)),
+    ]);
+  } catch (error) {
+    throw new Error(explain(error));
+  }
 
-  const offerRows = ((offers.data ?? []) as unknown as Array<Record<string, unknown>>).map(mapOffer);
-  return ((partners.data ?? []) as unknown as Array<Record<string, unknown>>).map((row) =>
-    mapPartner(row, offerRows),
-  );
+  const offerRows = offers.map(mapOffer);
+  return partners.map((row) => mapPartner(row, offerRows));
 }
 
 export async function getPartnerForAdmin(id: string): Promise<AffiliatePartner | null> {
@@ -168,35 +215,31 @@ export async function getPartnerForAdmin(id: string): Promise<AffiliatePartner |
  */
 export async function listPublicPartners(now: Date = new Date()): Promise<AffiliatePartner[]> {
   if (!hasDatabase()) return [];
-  const db = getSupabaseAdmin();
-  const partners = await db
-    .from('affiliate_partners')
-    .select(PARTNER_COLUMNS)
-    .eq('is_active', true)
-    .order('is_featured', { ascending: false })
-    .order('sort_order')
-    .order('name');
-  if (isMissingTable(partners.error)) return [];
-  if (partners.error) throw new Error(partners.error.message);
+  const db = getDb();
+  let partners: Array<Record<string, unknown>>;
+  try {
+    partners = await db
+      .select(PARTNER_COLUMNS)
+      .from(p)
+      .where(eq(p.is_active, true))
+      .orderBy(desc(p.is_featured), asc(p.sort_order), asc(p.name));
+  } catch (error) {
+    if (isMissingTable(error)) return [];
+    throw new Error(pgErrorMessage(error));
+  }
 
-  const live = ((partners.data ?? []) as unknown as Array<Record<string, unknown>>).filter((row) =>
+  const live = partners.filter((row) =>
     isWithinWindow((row.starts_at as string | null) ?? null, (row.ends_at as string | null) ?? null, now),
   );
   if (live.length === 0) return [];
 
   const offers = await db
-    .from('affiliate_offers')
     .select(OFFER_COLUMNS)
-    .eq('is_active', true)
-    .in(
-      'partner_id',
-      live.map((row) => String(row.id)),
-    )
-    .order('sort_order')
-    .order('created_at');
-  if (offers.error) throw new Error(offers.error.message);
+    .from(o)
+    .where(and(eq(o.is_active, true), inArray(o.partner_id, live.map((row) => String(row.id)))))
+    .orderBy(asc(o.sort_order), asc(o.created_at));
 
-  const offerRows = ((offers.data ?? []) as unknown as Array<Record<string, unknown>>).map(mapOffer);
+  const offerRows = (offers as Array<Record<string, unknown>>).map(mapOffer);
   return live.map((row) => mapPartner(row, offerRows));
 }
 
@@ -226,11 +269,11 @@ export async function resolveOutbound(slug: string, offerId: string | null): Pro
   if (!isSafeHttpUrl(target)) return null;
 
   // El clic no puede frenar la salida: si falla, se pierde un conteo, nada más.
-  const { error } = await getSupabaseAdmin().rpc('record_affiliate_click', {
-    p_partner_id: partner.id,
-    p_offer_id: offer?.id ?? null,
-  });
-  if (error) console.warn('[affiliates] no se pudo contar el clic:', error.message);
+  try {
+    await rpc('record_affiliate_click', { p_partner_id: partner.id, p_offer_id: offer?.id ?? null });
+  } catch (error) {
+    console.warn('[affiliates] no se pudo contar el clic:', pgErrorMessage(error));
+  }
 
   return { target, partnerId: partner.id, offerId: offer?.id ?? null };
 }
@@ -375,56 +418,67 @@ function offerRow(input: OfferInput) {
 }
 
 /** Explica los errores de base que el panel puede provocar. */
-function explain(error: { code?: string; message: string }): string {
-  if (error.code === '23505') return 'Ya existe un aliado con ese slug.';
-  if (isMissingTable(error)) return 'Faltan las tablas de afiliados: corré la migración 0047_affiliates.sql en Supabase.';
-  return error.message;
+function explain(error: unknown): string {
+  if (pgErrorCode(error) === '23505') return 'Ya existe un aliado con ese slug.';
+  if (isMissingTable(error)) return 'Faltan las tablas de afiliados: corré la migración 0047_affiliates.sql.';
+  return pgErrorMessage(error);
+}
+
+/** Corre una escritura del panel y traduce el error de base a algo legible. */
+async function explained<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    throw new Error(explain(error));
+  }
+}
+
+async function readPartner(id: string): Promise<{ slug: string; logo_url: string | null }> {
+  const [row] = await explained(() =>
+    getDb().select({ slug: p.slug, logo_url: p.logo_url }).from(p).where(eq(p.id, id)),
+  );
+  if (!row) throw new Error('El aliado no existe.');
+  return row;
 }
 
 export async function createPartner(input: PartnerInput): Promise<string> {
-  const db = getSupabaseAdmin();
-  const result = await db.from('affiliate_partners').insert(partnerRow(input)).select('id, slug').single();
-  if (result.error) throw new Error(explain(result.error));
-  revalidatePartners([String(result.data.slug)]);
-  return String(result.data.id);
+  const values = partnerRow(input);
+  const [created] = await explained(() =>
+    getDb().insert(p).values(values).returning({ id: p.id, slug: p.slug }),
+  );
+  revalidatePartners([created.slug]);
+  return created.id;
 }
 
 export async function updatePartner(id: string, input: PartnerInput): Promise<void> {
-  const db = getSupabaseAdmin();
-  const before = await db.from('affiliate_partners').select('slug').eq('id', id).single();
-  if (before.error) throw new Error(explain(before.error));
-
-  const result = await db.from('affiliate_partners').update(partnerRow(input)).eq('id', id).select('slug').single();
-  if (result.error) throw new Error(explain(result.error));
-  revalidatePartners([String(before.data.slug), String(result.data.slug)]);
+  const before = await readPartner(id);
+  const values = partnerRow(input);
+  const [after] = await explained(() =>
+    getDb().update(p).set(values).where(eq(p.id, id)).returning({ slug: p.slug }),
+  );
+  revalidatePartners([before.slug, after?.slug ?? before.slug]);
 }
 
 export async function deletePartner(id: string): Promise<void> {
-  const db = getSupabaseAdmin();
-  const row = await db.from('affiliate_partners').select('slug, logo_url').eq('id', id).single();
-  if (row.error) throw new Error(explain(row.error));
+  const row = await readPartner(id);
+  await explained(() => getDb().delete(p).where(eq(p.id, id)));
 
-  const result = await db.from('affiliate_partners').delete().eq('id', id);
-  if (result.error) throw new Error(explain(result.error));
-
-  await removeStoredObject(row.data.logo_url as string | null);
-  revalidatePartners([String(row.data.slug)]);
+  await removeStoredObject(row.logo_url);
+  revalidatePartners([row.slug]);
 }
 
 export async function saveOffer(partnerId: string, offerId: string | null, input: OfferInput): Promise<void> {
-  const db = getSupabaseAdmin();
   const row = offerRow(input);
-  const result = offerId
-    ? await db.from('affiliate_offers').update(row).eq('id', offerId).eq('partner_id', partnerId)
-    : await db.from('affiliate_offers').insert({ ...row, partner_id: partnerId });
-  if (result.error) throw new Error(explain(result.error));
+  await explained(() =>
+    offerId
+      ? getDb().update(o).set(row).where(and(eq(o.id, offerId), eq(o.partner_id, partnerId)))
+      : getDb().insert(o).values({ ...row, partner_id: partnerId }),
+  );
   await revalidatePartnerById(partnerId);
 }
 
 export async function deleteOffer(partnerId: string, offerId: string): Promise<void> {
-  const db = getSupabaseAdmin();
-  const result = await db.from('affiliate_offers').delete().eq('id', offerId).eq('partner_id', partnerId);
-  if (result.error) throw new Error(explain(result.error));
+  await explained(() => getDb().delete(o).where(and(eq(o.id, offerId), eq(o.partner_id, partnerId))));
   await revalidatePartnerById(partnerId);
 }
 
@@ -437,38 +491,33 @@ export async function uploadPartnerLogo(id: string, file: File): Promise<string>
   if (!file.type.startsWith('image/')) throw new Error('El archivo tiene que ser una imagen.');
   if (file.size > 5 * 1024 * 1024) throw new Error('La imagen no puede pasar de 5 MB.');
 
-  const db = getSupabaseAdmin();
-  const partner = await db.from('affiliate_partners').select('slug, logo_url').eq('id', id).single();
-  if (partner.error) throw new Error(explain(partner.error));
+  const partner = await readPartner(id);
 
   const extension = (file.name.split('.').pop() ?? 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-  const objectPath = `${partner.data.slug}-${Date.now().toString(36)}.${extension}`;
+  const objectPath = `${partner.slug}-${Date.now().toString(36)}.${extension}`;
 
   const bytes = await file.arrayBuffer();
-  const upload = await db.storage
+  const storage = getSupabaseAdmin().storage;
+  const upload = await storage
     .from(AFFILIATE_IMAGES_BUCKET)
     .upload(objectPath, bytes, { contentType: file.type, cacheControl: '31536000', upsert: false });
   if (upload.error) throw new Error(`No se pudo subir la imagen: ${upload.error.message}`);
 
-  const { data } = db.storage.from(AFFILIATE_IMAGES_BUCKET).getPublicUrl(objectPath);
-  const update = await db.from('affiliate_partners').update({ logo_url: data.publicUrl }).eq('id', id);
-  if (update.error) throw new Error(explain(update.error));
+  const { data } = storage.from(AFFILIATE_IMAGES_BUCKET).getPublicUrl(objectPath);
+  await explained(() => getDb().update(p).set({ logo_url: data.publicUrl }).where(eq(p.id, id)));
 
-  await removeStoredObject(partner.data.logo_url as string | null);
-  revalidatePartners([String(partner.data.slug)]);
+  await removeStoredObject(partner.logo_url);
+  revalidatePartners([partner.slug]);
   return data.publicUrl;
 }
 
 export async function removePartnerLogo(id: string): Promise<void> {
-  const db = getSupabaseAdmin();
-  const partner = await db.from('affiliate_partners').select('slug, logo_url').eq('id', id).single();
-  if (partner.error) throw new Error(explain(partner.error));
+  const partner = await readPartner(id);
 
-  const update = await db.from('affiliate_partners').update({ logo_url: null }).eq('id', id);
-  if (update.error) throw new Error(explain(update.error));
+  await explained(() => getDb().update(p).set({ logo_url: null }).where(eq(p.id, id)));
 
-  await removeStoredObject(partner.data.logo_url as string | null);
-  revalidatePartners([String(partner.data.slug)]);
+  await removeStoredObject(partner.logo_url);
+  revalidatePartners([partner.slug]);
 }
 
 /** Borra el objeto del bucket si la URL es de este bucket. Nunca lanza. */
@@ -482,8 +531,12 @@ async function removeStoredObject(url: string | null): Promise<void> {
 }
 
 async function revalidatePartnerById(partnerId: string): Promise<void> {
-  const row = await getSupabaseAdmin().from('affiliate_partners').select('slug').eq('id', partnerId).single();
-  revalidatePartners(row.error ? [] : [String(row.data.slug)]);
+  try {
+    const [row] = await getDb().select({ slug: p.slug }).from(p).where(eq(p.id, partnerId));
+    revalidatePartners(row ? [row.slug] : []);
+  } catch {
+    revalidatePartners([]);
+  }
 }
 
 /** Tira el índice de aliados en los dos idiomas y la página de cada slug tocado. */
@@ -513,38 +566,47 @@ export interface AffiliateApplication extends ApplicationData {
 /** Cuántas mandó el mismo visitante en la última hora: el freno anti-ráfaga. */
 export async function countRecentApplications(visitorHash: string): Promise<number> {
   const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { count, error } = await getSupabaseAdmin()
-    .from('affiliate_applications')
-    .select('id', { count: 'exact', head: true })
-    .eq('visitor_hash', visitorHash)
-    .gte('created_at', since);
-  if (error) throw new Error(explainApplications(error));
-  return count ?? 0;
+  try {
+    const [row] = await getDb()
+      .select({ n: count() })
+      .from(affiliateApplications)
+      .where(and(eq(affiliateApplications.visitor_hash, visitorHash), gte(affiliateApplications.created_at, since)));
+    return row?.n ?? 0;
+  } catch (error) {
+    throw new Error(explainApplications(error));
+  }
 }
 
 export async function createApplication(data: ApplicationData, locale: string, visitorHash: string | null): Promise<void> {
-  const { error } = await getSupabaseAdmin().from('affiliate_applications').insert({
-    store_name: data.storeName,
-    website: data.website,
-    contact_name: data.contactName,
-    email: data.email,
-    phone: data.phone,
-    category: data.category,
-    message: data.message,
-    locale,
-    visitor_hash: visitorHash,
-  });
-  if (error) throw new Error(explainApplications(error));
+  try {
+    await getDb().insert(affiliateApplications).values({
+      store_name: data.storeName,
+      website: data.website,
+      contact_name: data.contactName,
+      email: data.email,
+      phone: data.phone,
+      category: data.category,
+      message: data.message,
+      locale,
+      visitor_hash: visitorHash,
+    });
+  } catch (error) {
+    throw new Error(explainApplications(error));
+  }
 }
 
 export async function listApplications(): Promise<AffiliateApplication[]> {
-  const { data, error } = await getSupabaseAdmin()
-    .from('affiliate_applications')
-    .select('id, created_at, store_name, website, contact_name, email, phone, category, message, locale, status, notes')
-    .order('created_at', { ascending: false })
-    .limit(200);
-  if (error) throw new Error(explainApplications(error));
-  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+  let data: Array<typeof affiliateApplications.$inferSelect>;
+  try {
+    data = await getDb()
+      .select()
+      .from(affiliateApplications)
+      .orderBy(desc(affiliateApplications.created_at))
+      .limit(200);
+  } catch (error) {
+    throw new Error(explainApplications(error));
+  }
+  return data.map((row) => ({
     id: String(row.id),
     createdAt: String(row.created_at),
     storeName: String(row.store_name),
@@ -562,23 +624,30 @@ export async function listApplications(): Promise<AffiliateApplication[]> {
 
 /** Solicitudes sin atender, para el aviso del panel. 0 si falta la migración. */
 export async function countNewApplications(): Promise<number> {
-  const { count, error } = await getSupabaseAdmin()
-    .from('affiliate_applications')
-    .select('id', { count: 'exact', head: true })
-    .eq('status', 'new');
-  return error ? 0 : (count ?? 0);
+  try {
+    const [row] = await getDb()
+      .select({ n: count() })
+      .from(affiliateApplications)
+      .where(eq(affiliateApplications.status, 'new'));
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
 }
 
 export async function updateApplication(id: string, status: ApplicationStatus, notes: string): Promise<void> {
   if (!APPLICATION_STATUSES.includes(status)) throw new Error('Estado inválido.');
-  const { error } = await getSupabaseAdmin()
-    .from('affiliate_applications')
-    .update({ status, notes: nullable(notes) })
-    .eq('id', id);
-  if (error) throw new Error(explainApplications(error));
+  try {
+    await getDb()
+      .update(affiliateApplications)
+      .set({ status, notes: nullable(notes) })
+      .where(eq(affiliateApplications.id, id));
+  } catch (error) {
+    throw new Error(explainApplications(error));
+  }
 }
 
-function explainApplications(error: { code?: string; message: string }): string {
-  if (isMissingTable(error)) return 'Falta la tabla de solicitudes: corré la migración 0049_affiliate_applications.sql en Supabase.';
-  return error.message;
+function explainApplications(error: unknown): string {
+  if (isMissingTable(error)) return 'Falta la tabla de solicitudes: corré la migración 0049_affiliate_applications.sql.';
+  return pgErrorMessage(error);
 }

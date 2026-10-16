@@ -1,13 +1,14 @@
 # Scraping horario, corrido aqui mismo en el runner de GitHub.
 #
 # No pasa por el sitio: Cloudflare Workers (plan Free) permite 50 subrequests
-# por invocacion y cada pagina de una tienda y cada llamada a Supabase cuentan,
+# por invocacion y cada pagina de una tienda y cada consulta a la base cuentan,
 # asi que un catalogo grande no cabe. Aca el scraper es Node normal contra
-# Supabase, sin techo de subrequests ni de CPU. Ver scripts/run-scrape.ts.
+# Postgres, sin techo de subrequests ni de CPU. Ver scripts/run-scrape.ts.
 #
 # Secretos de repositorio requeridos:
-#   NEXT_PUBLIC_SUPABASE_URL
-#   SUPABASE_SECRET_KEY        (la service key; ignora RLS)
+#   DATABASE_URL   (Postgres directo. En Supabase, el "Session pooler": los
+#                   runners de GitHub no tienen IPv6 y la conexion directa de
+#                   Supabase es solo IPv6.)
 #
 # Ponerse al dia: Actions > Scraping > Run workflow con "until_empty" marcado
 # repite tandas hasta que no queden targets vencidos.
@@ -55,8 +56,7 @@ jobs:
 
       - name: Correr tandas
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SCRAPE_LIMIT: ${{ inputs.limit || '2' }}
           SCRAPE_UNTIL_EMPTY: ${{ inputs.until_empty || false }}
         # `react-server` hace que `import 'server-only'` resuelva al modulo vacio.

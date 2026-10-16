@@ -1,7 +1,16 @@
 import 'server-only';
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { and, asc, desc, eq, gt, inArray } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { rpc } from '@/server/db/rpc';
+import {
+  categories as categoriesTable,
+  categoryContent,
+  storeCategories,
+  storeProducts,
+  vCatalogCanonicalCategoryFacets as canonicalFacets,
+} from '@/server/db/schema';
 import type { Locale } from '@/features/i18n/translate';
 import type { FacetOption } from '@/features/products/categoryFacets';
 import { DEFAULT_SORT } from '@/features/products/sortProducts';
@@ -145,38 +154,52 @@ export interface CategoryTree {
 
 /** Los nodos del árbol, sin los mapas: es lo que se puede guardar en caché. */
 async function loadCategoryNodes(locale: Locale): Promise<CategoryNode[]> {
-  const db = getSupabaseAdmin();
+  const db = getDb();
+  const c = categoriesTable;
 
-  const selectCategories = (columns: string) =>
-    db.from('categories').select(columns).eq('is_active', true).order('level').order('position').order('name');
-
-  const [firstTry, content, facets] = await Promise.all([
-    selectCategories(
-      'id, parent_id, slug, name, level, position, is_active, image_url, image_alt, featured_position',
-    ),
+  const [categoryRows, contentRows, facets] = await Promise.all([
     db
-      .from('category_content')
-      .select('category_id, locale, title, meta_description, intro, body, keywords'),
-    db.from('v_catalog_canonical_category_facets').select('slug, parent_slug, product_count'),
+      .select({
+        id: c.id,
+        parent_id: c.parent_id,
+        slug: c.slug,
+        name: c.name,
+        level: c.level,
+        position: c.position,
+        is_active: c.is_active,
+        image_url: c.image_url,
+        image_alt: c.image_alt,
+        featured_position: c.featured_position,
+      })
+      .from(c)
+      .where(eq(c.is_active, true))
+      .orderBy(asc(c.level), asc(c.position), asc(c.name)),
+    // El texto es opcional: si falla, el árbol se pinta pelado.
+    db
+      .select({
+        category_id: categoryContent.category_id,
+        locale: categoryContent.locale,
+        title: categoryContent.title,
+        meta_description: categoryContent.meta_description,
+        intro: categoryContent.intro,
+        body: categoryContent.body,
+        keywords: categoryContent.keywords,
+      })
+      .from(categoryContent)
+      .then((rows) => rows as RawContent[])
+      .catch(() => [] as RawContent[]),
+    db
+      .select({
+        slug: canonicalFacets.slug,
+        parent_slug: canonicalFacets.parent_slug,
+        product_count: canonicalFacets.product_count,
+      })
+      .from(canonicalFacets),
   ]);
-
-  // Sin la 0031 no hay imagen ni texto, pero el árbol sigue: se pinta pelado.
-  // Mismo cuidado que en catalog.ts con las columnas nuevas de la vista.
-  const categories =
-    firstTry.error && firstTry.error.code === '42703'
-      ? await selectCategories('id, parent_id, slug, name, level, position, is_active')
-      : firstTry;
-  if (categories.error) throw new Error(categories.error.message);
-  const contentRows = (content.error ? [] : (content.data ?? [])) as RawContent[];
-  if (facets.error) throw new Error(facets.error.message);
 
   // Conteo directo por slug; el de una raíz suma el de sus hijas.
   const direct = new Map<string, number>();
-  for (const row of (facets.data ?? []) as Array<{
-    slug: string | null;
-    parent_slug: string | null;
-    product_count: number;
-  }>) {
+  for (const row of facets) {
     if (!row.slug) continue;
     direct.set(row.slug, (direct.get(row.slug) ?? 0) + Number(row.product_count ?? 0));
   }
@@ -188,7 +211,7 @@ async function loadCategoryNodes(locale: Locale): Promise<CategoryNode[]> {
     contentByCategory.set(row.category_id, list);
   }
 
-  const raw = (categories.data ?? []) as unknown as Partial<RawCategory>[];
+  const raw = categoryRows as Partial<RawCategory>[];
   const nodes: CategoryNode[] = raw.map((row) => ({
     id: String(row.id),
     slug: String(row.slug),
@@ -298,23 +321,24 @@ async function getPopularProducts(
   locale: Locale,
   limit: number,
 ): Promise<Product[]> {
-  const db = getSupabaseAdmin();
+  const db = getDb();
+  const sp = storeProducts;
   const categoryIds = [category.id, ...children.map((child) => child.id)];
 
-  const clicked = await db
-    .from('store_products')
-    .select('id, click_count, store_categories!inner(category_id)')
-    .in('store_categories.category_id', categoryIds)
-    .gt('click_count', 0)
-    .eq('is_active', true)
-    .order('click_count', { ascending: false })
-    .order('last_clicked_at', { ascending: false })
-    .limit(limit * 2);
-
-  // Sin la columna (0031 sin aplicar) o cualquier otro fallo: solo ofertas.
-  const clickedIds = clicked.error
-    ? []
-    : ((clicked.data ?? []) as Array<{ id: string }>).map((row) => row.id);
+  // Ante cualquier fallo: solo ofertas.
+  let clickedIds: string[] = [];
+  try {
+    const clicked = await db
+      .select({ id: sp.id })
+      .from(sp)
+      .innerJoin(storeCategories, eq(storeCategories.id, sp.store_category_id))
+      .where(and(inArray(storeCategories.category_id, categoryIds), gt(sp.click_count, 0), eq(sp.is_active, true)))
+      .orderBy(desc(sp.click_count), desc(sp.last_clicked_at))
+      .limit(limit * 2);
+    clickedIds = clicked.map((row) => row.id);
+  } catch {
+    // Se queda en ofertas.
+  }
 
   const scope = { category: category.slug, locale, sort: 'discount' as const, withTotal: false };
 
@@ -352,10 +376,13 @@ export const EMPTY_SCOPED_FACETS: ScopedFacets = {
 };
 
 async function getScopedFacets(slug: string): Promise<ScopedFacets> {
-  const { data, error } = await getSupabaseAdmin().rpc('catalog_category_facets', {
-    p_slug: slug,
-  });
-  if (error || !data) return EMPTY_SCOPED_FACETS;
+  let data: unknown;
+  try {
+    data = await rpc('catalog_category_facets', { p_slug: slug });
+  } catch {
+    return EMPTY_SCOPED_FACETS;
+  }
+  if (!data) return EMPTY_SCOPED_FACETS;
 
   const payload = data as {
     total?: number;
@@ -448,8 +475,10 @@ export async function listCategorySlugsForSitemap(): Promise<
 /** Suma un clic a un producto. Nunca lanza: un contador no tumba una página. */
 export async function recordProductClick(productId: string): Promise<boolean> {
   if (!hasDatabase()) return false;
-  const { error } = await getSupabaseAdmin().rpc('record_product_click', {
-    p_product_id: productId,
-  });
-  return !error;
+  try {
+    await rpc('record_product_click', { p_product_id: productId });
+    return true;
+  } catch {
+    return false;
+  }
 }

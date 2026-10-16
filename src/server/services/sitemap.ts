@@ -1,5 +1,8 @@
 import 'server-only';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { and, asc, count, gt, type SQL } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { pgErrorMessage } from '@/server/db/pg';
+import { vStoreProductsCurrent as view } from '@/server/db/schema';
 
 /**
  * Datos para los sitemaps de producto.
@@ -11,8 +14,7 @@ import { getSupabaseAdmin } from '@/server/db/supabase';
  * generar el sitemap tarde minutos.
  */
 
-/** La vista pública: sólo artículos activos y con precio. */
-const VIEW = 'v_store_products_current';
+/* La fuente es `v_store_products_current`: sólo artículos activos y con precio. */
 
 /**
  * Los artículos con precio 0 quedan fuera del sitemap.
@@ -48,7 +50,7 @@ const VIEW = 'v_store_products_current';
  * que hace falta para que un nombre de dominio más largo o un `hreflang` más
  * no vuelvan a romperlo.
  *
- * De paso arregla lo otro: 2 500 entradas son 3 viajes a PostgREST en vez de
+ * De paso arregla lo otro: 2 500 entradas son 3 viajes a la base en vez de
  * 10, y el archivo se genera en menos de un segundo en lugar de rozar el
  * tiempo máximo de la función.
  *
@@ -57,12 +59,11 @@ const VIEW = 'v_store_products_current';
 export const SITEMAP_CHUNK_SIZE = 2_500;
 
 /**
- * Tamaño de lote contra PostgREST.
+ * Tamaño de lote por viaje a la base.
  *
- * Supabase corta las respuestas en 1 000 filas por petición. No es negociable
- * desde el cliente, así que cada archivo de sitemap se arma encadenando varios
- * viajes en vez de uno solo que devolvería mil filas en silencio. Con tandas de
- * 2 500 son tres.
+ * Viene de cuando PostgREST cortaba las respuestas en 1 000 filas. Con
+ * Postgres directo ya no hay tope, pero el lote se queda: mantiene acotada la
+ * memoria del Worker y el orden de las tandas no cambia.
  */
 const FETCH_PAGE = 1_000;
 
@@ -80,9 +81,6 @@ export interface SitemapProduct {
   lastModified: string;
 }
 
-/** Igual que en `catalog.ts`: una sola comprobación por proceso. */
-let slugColumnPublished = true;
-
 /**
  * Cuántos artículos entran al sitemap. De acá sale el número de archivos que
  * lista el índice.
@@ -93,13 +91,12 @@ let slugColumnPublished = true;
  * le dice al rastreador que reintente sin tocar lo que ya tiene indexado.
  */
 export async function countSitemapProducts(): Promise<number> {
-  const { count, error } = await getSupabaseAdmin()
-    .from(VIEW)
-    .select('id', { count: 'exact', head: true })
-    .gt('price', 0);
-
-  if (error) throw new Error(`No se pudo contar el catálogo del sitemap: ${error.message}`);
-  return count ?? 0;
+  try {
+    const [row] = await getDb().select({ n: count() }).from(view).where(gt(view.price, 0));
+    return row?.n ?? 0;
+  } catch (error) {
+    throw new Error(`No se pudo contar el catálogo del sitemap: ${pgErrorMessage(error)}`);
+  }
 }
 
 /** Cuántos archivos de producto hacen falta para el catálogo actual. */
@@ -144,7 +141,7 @@ export async function getSitemapProducts(chunk: number): Promise<SitemapProduct[
      */
     const size = Math.min(FETCH_PAGE, SITEMAP_CHUNK_SIZE - offset);
 
-    const rows = await selectProducts((query) => query.range(from, from + size - 1));
+    const rows = await selectProducts({ offset: from, limit: size });
     if (rows.length === 0) break;
     results.push(...rows);
 
@@ -171,9 +168,7 @@ export async function* iterateSitemapProductChunks(): AsyncGenerator<SitemapProd
 
   for (;;) {
     const after = lastId;
-    const rows = await selectProducts((query) =>
-      (after === null ? query : query.gt('id', after)).limit(FETCH_PAGE),
-    );
+    const rows = await selectProducts({ afterId: after, limit: FETCH_PAGE });
     if (rows.length === 0) break;
 
     for (const row of rows) {
@@ -191,41 +186,30 @@ export async function* iterateSitemapProductChunks(): AsyncGenerator<SitemapProd
   if (chunk.length > 0) yield chunk;
 }
 
-type ProductQuery = ReturnType<typeof baseProductQuery>;
-
-function baseProductQuery() {
-  return getSupabaseAdmin()
-    .from(VIEW)
-    .select(slugColumnPublished ? 'id, public_slug, last_seen_at' : 'id, last_seen_at')
-    .gt('price', 0)
-    .order('id', { ascending: true });
-}
-
 /**
- * Un viaje a la vista, con el orden y el filtro de siempre; `page` decide qué
- * ventana se pide. Lanza si falla.
- *
- * El slug se pide sólo si la vista lo publica. Sin esta comprobación, un
- * despliegue anterior a la migración 0021 haría fallar la consulta entera
- * (error 42703) y todos los archivos de producto responderían error —que es
- * exactamente lo que Search Console reporta como "no se ha podido obtener" y
- * lo que hace que Google deje de rastrear el catálogo.
+ * Un viaje a la vista, con el orden y el filtro de siempre: por `offset` o por
+ * cursor (`afterId`). Lanza si falla.
  */
-async function selectProducts(page: (query: ProductQuery) => ProductQuery): Promise<SitemapProduct[]> {
-  let { data, error } = await page(baseProductQuery());
+async function selectProducts(page: {
+  limit: number;
+  offset?: number;
+  afterId?: string | null;
+}): Promise<SitemapProduct[]> {
+  const filters: SQL[] = [gt(view.price, 0)];
+  if (page.afterId) filters.push(gt(view.id, page.afterId));
 
-  if (error && slugColumnPublished && String(error.message).includes('public_slug')) {
-    slugColumnPublished = false;
-    ({ data, error } = await page(baseProductQuery()));
+  let rows: Array<{ id: string; public_slug: string | null; last_seen_at: string | null }>;
+  try {
+    rows = await getDb()
+      .select({ id: view.id, public_slug: view.public_slug, last_seen_at: view.last_seen_at })
+      .from(view)
+      .where(and(...filters))
+      .orderBy(asc(view.id))
+      .limit(page.limit)
+      .offset(page.offset ?? 0);
+  } catch (error) {
+    throw new Error(`No se pudo leer el catálogo del sitemap: ${pgErrorMessage(error)}`);
   }
-
-  if (error) throw new Error(`No se pudo leer el catálogo del sitemap: ${error.message}`);
-
-  const rows = (data ?? []) as unknown as Array<{
-    id: string;
-    public_slug?: string | null;
-    last_seen_at: string | null;
-  }>;
 
   return rows.map((row) => ({
     id: String(row.id),

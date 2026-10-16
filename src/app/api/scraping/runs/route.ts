@@ -1,5 +1,7 @@
 import { assertAdminAuthorized, toErrorResponse } from '@/server/scraping/api-guard';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { desc, eq } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { scrapeRuns } from '@/server/db/schema';
 
 /**
  * GET /api/scraping/runs?targetId=<uuid>&limit=50
@@ -17,18 +19,14 @@ export async function GET(request: Request): Promise<Response> {
     const targetId = url.searchParams.get('targetId');
     const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
 
-    let query = getSupabaseAdmin()
-      .from('scrape_runs')
-      .select('*')
-      .order('started_at', { ascending: false })
+    const runs = await getDb()
+      .select()
+      .from(scrapeRuns)
+      .where(targetId ? eq(scrapeRuns.target_id, targetId) : undefined)
+      .orderBy(desc(scrapeRuns.started_at))
       .limit(limit);
 
-    if (targetId) query = query.eq('target_id', targetId);
-
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-
-    return Response.json({ ok: true, runs: data ?? [] });
+    return Response.json({ ok: true, runs });
   } catch (error) {
     return toErrorResponse(error);
   }

@@ -1,6 +1,9 @@
 import type { Metadata } from 'next';
 import { NO_INDEX_ROBOTS } from '@/lib/seo/metadata';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { asc, count, desc, eq } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { pgErrorMessage } from '@/server/db/pg';
+import { priceHistory, scrapeRuns, storeProducts, stores as storesTable, vScrapeTargetHealth } from '@/server/db/schema';
 import { listStrategies } from '@/server/scraping/registry';
 import { recoverStaleRuns } from '@/server/scraping/runner';
 import { ScrapingDashboard } from '@/features/admin-scraping/ScrapingDashboard';
@@ -12,7 +15,7 @@ import { logError } from '@/server/errors/logError';
  * Panel de scraping.
  *
  * Los datos se leen aqui, en el servidor, con la service key: el navegador
- * nunca ve credenciales de Supabase. Las acciones (crear, correr, pausar) van
+ * nunca ve credenciales de la base. Las acciones (crear, correr, pausar) van
  * contra /api/scraping/*.
  *
  * La ruta esta abierta a proposito en esta etapa. Cuando entre OAuth: proteger
@@ -50,37 +53,39 @@ export interface DashboardMetrics {
 
 async function loadDashboardData(): Promise<LoadResult> {
   try {
-    const db = getSupabaseAdmin();
+    const db = getDb();
 
     // Abrir el panel cierra las corridas que dejaron de latir: si no, se verian
     // en 'running' hasta el proximo disparo del cron.
     await recoverStaleRuns();
 
-    const [targetsResult, storesResult, runsResult, productsCount, pricesCount] = await Promise.all([
+    const [targets, stores, recentRuns, [productsCount], [pricesCount]] = await Promise.all([
       db
-        .from('v_scrape_target_health')
-        .select('*')
-        .order('store_name', { ascending: true })
-        .order('target_name', { ascending: true }),
-      db.from('stores').select('id, slug, name, strategy_key, is_active').order('name'),
-      db.from('scrape_runs').select('*').order('started_at', { ascending: false }).limit(20),
-      // head: true trae solo el conteo, sin cargar una sola fila.
-      db.from('store_products').select('id', { count: 'exact', head: true }).eq('is_active', true),
-      db.from('price_history').select('id', { count: 'exact', head: true }),
+        .select()
+        .from(vScrapeTargetHealth)
+        .orderBy(asc(vScrapeTargetHealth.store_name), asc(vScrapeTargetHealth.target_name)),
+      db
+        .select({
+          id: storesTable.id,
+          slug: storesTable.slug,
+          name: storesTable.name,
+          strategy_key: storesTable.strategy_key,
+          is_active: storesTable.is_active,
+        })
+        .from(storesTable)
+        .orderBy(asc(storesTable.name)),
+      db.select().from(scrapeRuns).orderBy(desc(scrapeRuns.started_at)).limit(20),
+      db.select({ n: count() }).from(storeProducts).where(eq(storeProducts.is_active, true)),
+      db.select({ n: count() }).from(priceHistory),
     ]);
 
-    const failure = targetsResult.error ?? storesResult.error ?? runsResult.error;
-    if (failure) throw new Error(failure.message);
-
-    const stores = (storesResult.data ?? []) as StoreOption[];
-
     return {
-      targets: (targetsResult.data ?? []) as TargetHealth[],
-      stores,
-      recentRuns: (runsResult.data ?? []) as RunSummary[],
+      targets: targets as TargetHealth[],
+      stores: stores as StoreOption[],
+      recentRuns: recentRuns as RunSummary[],
       metrics: {
-        trackedProducts: productsCount.count ?? 0,
-        pricePoints: pricesCount.count ?? 0,
+        trackedProducts: productsCount?.n ?? 0,
+        pricePoints: pricesCount?.n ?? 0,
         activeStores: stores.filter((store) => store.is_active).length,
       },
       error: null,
@@ -94,7 +99,7 @@ async function loadDashboardData(): Promise<LoadResult> {
       stores: [],
       recentRuns: [],
       metrics: { trackedProducts: 0, pricePoints: 0, activeStores: 0 },
-      error: error instanceof Error ? error.message : String(error),
+      error: pgErrorMessage(error),
     };
   }
 }
@@ -120,13 +125,9 @@ export default async function ScrapingAdminPage() {
               <code className="rounded bg-[var(--bg-inset)] px-1">src/db/migrations</code> en orden?
             </li>
             <li>
-              Agregaste <code className="rounded bg-[var(--bg-inset)] px-1">find_your_prices</code> en
-              Supabase → Settings → API → Exposed schemas?
-            </li>
-            <li>
-              Estan <code className="rounded bg-[var(--bg-inset)] px-1">NEXT_PUBLIC_SUPABASE_URL</code> y{' '}
-              <code className="rounded bg-[var(--bg-inset)] px-1">SUPABASE_SECRET_KEY</code> en
-              .env.local?
+              Esta <code className="rounded bg-[var(--bg-inset)] px-1">DATABASE_URL</code> en .env.local
+              (o el binding <code className="rounded bg-[var(--bg-inset)] px-1">HYPERDRIVE</code> en
+              producción)?
             </li>
           </ul>
         </div>

@@ -1,6 +1,7 @@
 import 'server-only';
 import { describeError, errorFingerprint, type ErrorSource } from '@/lib/errors/fingerprint';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { getDb } from '@/server/db/client';
+import { errorLogs } from '@/server/db/schema';
 
 /**
  * Anota un error en `error_logs` (migración 0051) para verlo en
@@ -51,7 +52,7 @@ export async function logError(input: LogErrorInput): Promise<number | null> {
   const log = level === 'warning' ? console.warn : console.error;
   log(`[${input.source}] ${route ?? ''} ${message}`);
 
-  if (!enabled() || !process.env.NEXT_PUBLIC_SUPABASE_URL) return null;
+  if (!enabled()) return null;
 
   const now = Date.now();
   if (now - (lastWritten.get(fingerprint) ?? 0) < BURST_WINDOW_MS) return null;
@@ -59,9 +60,9 @@ export async function logError(input: LogErrorInput): Promise<number | null> {
   if (lastWritten.size > 500) lastWritten.clear();
 
   try {
-    const { data, error } = await getSupabaseAdmin()
-      .from('error_logs')
-      .insert({
+    const [row] = await getDb()
+      .insert(errorLogs)
+      .values({
         source: input.source,
         level,
         message,
@@ -74,13 +75,8 @@ export async function logError(input: LogErrorInput): Promise<number | null> {
         context: input.context ?? null,
         user_agent: input.userAgent?.slice(0, 300) ?? null,
       })
-      .select('id')
-      .single();
-    if (error) {
-      console.error('[errores] no se pudo anotar el error:', error.message);
-      return null;
-    }
-    return Number(data.id);
+      .returning({ id: errorLogs.id });
+    return row ? Number(row.id) : null;
   } catch (failure) {
     console.error('[errores] no se pudo anotar el error:', failure);
     return null;

@@ -8,8 +8,9 @@
 # entra o sale un articulo, no con cada precio. Para forzarlo despues de un
 # scraping grande: Actions > Sitemaps > Run workflow.
 #
-# Secretos de repositorio requeridos (los mismos del scraping):
-#   NEXT_PUBLIC_SUPABASE_URL
+# Secretos de repositorio requeridos:
+#   DATABASE_URL               (el mismo del scraping; lee el catalogo)
+#   NEXT_PUBLIC_SUPABASE_URL   (Storage, hasta que los sitemaps pasen a R2)
 #   SUPABASE_SECRET_KEY
 
 name: Sitemaps
@@ -44,6 +45,7 @@ jobs:
 
       - name: Generar y subir
         env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           NEXT_PUBLIC_SITE_URL: https://findyourprices.com

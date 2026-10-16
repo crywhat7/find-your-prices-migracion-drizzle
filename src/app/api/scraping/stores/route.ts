@@ -1,5 +1,8 @@
 import { assertAdminAuthorized, toErrorResponse } from '@/server/scraping/api-guard';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { asc } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { pgErrorCode } from '@/server/db/pg';
+import { stores } from '@/server/db/schema';
 import { hasStrategy } from '@/server/scraping/registry';
 
 /**
@@ -14,13 +17,8 @@ export async function GET(request: Request): Promise<Response> {
   try {
     assertAdminAuthorized(request);
 
-    const { data, error } = await getSupabaseAdmin()
-      .from('stores')
-      .select('*')
-      .order('name', { ascending: true });
-
-    if (error) throw new Error(error.message);
-    return Response.json({ ok: true, stores: data ?? [] });
+    const rows = await getDb().select().from(stores).orderBy(asc(stores.name));
+    return Response.json({ ok: true, stores: rows });
   } catch (error) {
     return toErrorResponse(error);
   }
@@ -52,9 +50,11 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const { data, error } = await getSupabaseAdmin()
-      .from('stores')
-      .insert({
+    let store: typeof stores.$inferSelect | undefined;
+    try {
+      [store] = await getDb()
+        .insert(stores)
+        .values({
         slug,
         name,
         base_url: baseUrl,
@@ -62,22 +62,21 @@ export async function POST(request: Request): Promise<Response> {
         logo_url: typeof body.logo_url === 'string' ? body.logo_url : null,
         country_code: typeof body.country_code === 'string' ? body.country_code : 'HN',
         default_currency: typeof body.default_currency === 'string' ? body.default_currency : 'HNL',
-        config: typeof body.config === 'object' && body.config !== null ? body.config : {},
+        config:
+          typeof body.config === 'object' && body.config !== null ? (body.config as Record<string, unknown>) : {},
         request_delay_ms: Number(body.request_delay_ms) >= 0 ? Number(body.request_delay_ms) : 500,
         is_active: body.is_active !== false,
         notes: typeof body.notes === 'string' ? body.notes : null,
-      })
-      .select('*')
-      .single();
-
-    if (error) {
-      if (error.code === '23505') {
+        })
+        .returning();
+    } catch (error) {
+      if (pgErrorCode(error) === '23505') {
         return Response.json({ ok: false, error: `Ya existe una tienda con el slug "${slug}"` }, { status: 400 });
       }
-      throw new Error(error.message);
+      throw error;
     }
 
-    return Response.json({ ok: true, store: data }, { status: 201 });
+    return Response.json({ ok: true, store }, { status: 201 });
   } catch (error) {
     return toErrorResponse(error);
   }

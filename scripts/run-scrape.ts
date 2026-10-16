@@ -1,5 +1,5 @@
 /**
- * Corre las tandas de scraping fuera del sitio, directo contra Supabase.
+ * Corre las tandas de scraping fuera del sitio, directo contra la base.
  *
  * Existe porque el sitio corre en Cloudflare Workers (plan Free): 50
  * subrequests por invocacion, y cada pagina de una tienda y cada llamada a

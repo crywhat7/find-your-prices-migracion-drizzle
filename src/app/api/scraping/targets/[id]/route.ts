@@ -1,5 +1,7 @@
 import { assertAdminAuthorized, toErrorResponse } from '@/server/scraping/api-guard';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { eq } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { scrapeTargets } from '@/server/db/schema';
 import { nextRunFromAnchor } from '@/lib/schedule';
 
 /**
@@ -62,12 +64,14 @@ export async function PATCH(
      */
     const touchedSchedule = 'schedule_anchor_at' in patch || 'frequency_minutes' in patch;
     if (touchedSchedule && !('next_run_at' in patch)) {
-      const { data: current, error: readError } = await getSupabaseAdmin()
-        .from('scrape_targets')
-        .select('schedule_anchor_at, frequency_minutes')
-        .eq('id', id)
-        .single();
-      if (readError) throw new Error(readError.message);
+      const [current] = await getDb()
+        .select({
+          schedule_anchor_at: scrapeTargets.schedule_anchor_at,
+          frequency_minutes: scrapeTargets.frequency_minutes,
+        })
+        .from(scrapeTargets)
+        .where(eq(scrapeTargets.id, id));
+      if (!current) throw new Error('Target no encontrado');
 
       const anchor = ('schedule_anchor_at' in patch ? patch.schedule_anchor_at : current?.schedule_anchor_at) as
         | string
@@ -82,15 +86,15 @@ export async function PATCH(
       }
     }
 
-    const { data, error } = await getSupabaseAdmin()
-      .from('scrape_targets')
-      .update(patch)
-      .eq('id', id)
-      .select('*')
-      .single();
+    // Las claves ya vienen filtradas por EDITABLE_FIELDS: son columnas reales.
+    const [target] = await getDb()
+      .update(scrapeTargets)
+      .set(patch as Partial<typeof scrapeTargets.$inferInsert>)
+      .where(eq(scrapeTargets.id, id))
+      .returning();
 
-    if (error) throw new Error(error.message);
-    return Response.json({ ok: true, target: data });
+    if (!target) throw new Error('Target no encontrado');
+    return Response.json({ ok: true, target });
   } catch (error) {
     return toErrorResponse(error);
   }
@@ -104,8 +108,7 @@ export async function DELETE(
     assertAdminAuthorized(request);
     const { id } = await params;
 
-    const { error } = await getSupabaseAdmin().from('scrape_targets').delete().eq('id', id);
-    if (error) throw new Error(error.message);
+    await getDb().delete(scrapeTargets).where(eq(scrapeTargets.id, id));
 
     return Response.json({ ok: true });
   } catch (error) {

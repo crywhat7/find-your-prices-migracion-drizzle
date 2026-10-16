@@ -1,4 +1,6 @@
 import { siteConfig } from "@/config/site";
+import { getDb } from "@/server/db/connection";
+import { pageViews } from "@/server/db/schema";
 import {
   botName,
   classifyPath,
@@ -16,12 +18,9 @@ import {
  *
  * Va aparte del recolector de personas (`server/services/analytics.ts`) por
  * dónde corre: el proxy pasa por cada petición y tiene que ser liviano y
- * portátil. Nada de `supabase-js` ni de `node:crypto`: un `fetch` a la API
- * REST de Supabase y Web Crypto, que existen igual en Node, en el runtime
- * edge y en Cloudflare Workers.
+ * portátil: Web Crypto en vez de `node:crypto`, y la conexión de
+ * `server/db/connection`, que no lleva `server-only`.
  */
-
-const DB_SCHEMA = "find_your_prices";
 
 /** Solo en producción, por la misma razón que el recolector de personas. */
 function enabled(): boolean {
@@ -44,7 +43,7 @@ export function shouldLogBot(method: string, path: string, headers: Headers): bo
 /**
  * Fracción de las visitas de bots que se anotan: 1 de cada 10 por defecto.
  *
- * Anotarlas todas era una escritura a Supabase por cada página que pide
+ * Anotarlas todas era una escritura a la base por cada página que pide
  * Googlebot, y Googlebot pide decenas de miles por día: justo cuando el sitio
  * más necesita responder rápido al rastreador, la base se llenaba de
  * inserciones que compiten con las consultas de las fichas. Una muestra
@@ -70,9 +69,6 @@ export function inBotSample(random: number = Math.random()): boolean {
 /** Anota la visita de un bot. Nunca lanza: un registro perdido no importa. */
 export async function logBotVisit(url: URL, headers: Headers): Promise<void> {
   if (!enabled()) return;
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_SECRET;
-  if (!base || !key) return;
 
   try {
     const userAgent = headers.get("user-agent") ?? "";
@@ -81,7 +77,7 @@ export async function logBotVisit(url: URL, headers: Headers): Promise<void> {
     const name = botName(userAgent);
     const { device, os } = parseUserAgent(userAgent);
 
-    const row = {
+    const row: typeof pageViews.$inferInsert = {
       path,
       page_type: classifyPath(path, url.search),
       locale: /^\/en(\/|$)/.test(path) ? "en" : "es",
@@ -100,18 +96,7 @@ export async function logBotVisit(url: URL, headers: Headers): Promise<void> {
       bot_name: name,
     };
 
-    const response = await fetch(`${base}/rest/v1/page_views`, {
-      method: "POST",
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-        "Content-Profile": DB_SCHEMA,
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify(row),
-    });
-    if (!response.ok) console.warn("[analytics] no se pudo registrar el bot:", response.status, await response.text());
+    await getDb().insert(pageViews).values(row);
   } catch (error) {
     console.warn("[analytics] no se pudo registrar el bot:", error);
   }

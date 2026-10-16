@@ -33,18 +33,19 @@ ahora).
 
 ## Fases
 
-### Fase 1 — Base de Drizzle (sin tocar comportamiento)
+### Fase 1 — Base de Drizzle (sin tocar comportamiento) ✅
 1. Instalar `drizzle-orm`, `postgres`, `drizzle-kit` (dev).
 2. `src/server/db/schema.ts`: tablas, vistas y la materializada del esquema
    `find_your_prices` escritas a mano a partir de las migraciones
    (`pgSchema('find_your_prices')`). En la sesión de prueba se compara con
    `drizzle-kit pull` para cazar diferencias.
-3. `src/server/db/client.ts`: `getDb()` que toma la conexión de Hyperdrive
-   en el Worker (`getCloudflareContext().env.HYPERDRIVE`) y de `DATABASE_URL`
-   fuera de él.
+3. `src/server/db/connection.ts` (re-exportado por `client.ts`, que agrega
+   `server-only`): `getDb()` que toma la conexión de Hyperdrive en el Worker
+   (`getCloudflareContext().env.HYPERDRIVE`) y de `DATABASE_URL` fuera de él.
+   `connection.ts` no lleva `server-only` porque también lo carga `src/proxy.ts`.
 4. `drizzle.config.ts` y la variable `DATABASE_URL` en `.env.example`.
 
-### Fase 2 — Migrar consultas, archivo por archivo (de chico a grande)
+### Fase 2 — Migrar consultas, archivo por archivo (de chico a grande) ✅ (sin probar contra la base)
 Cada servicio conserva su firma y la forma de lo que devuelve, así los
 componentes no se enteran. Orden:
 1. `errorLog.ts`, `logError.ts`, rutas `api/scraping/*`, `admin/scraping/page.tsx`
@@ -55,7 +56,28 @@ componentes no se enteran. Orden:
 6. `catalog.ts` (búsqueda, facetas, conteos, FTS: el más delicado)
 7. Scripts: `scrape-all-local.ts`, `import-eneba.ts`, `reingest-local.ts`, `generate-sitemaps.ts`
 
-Los tests que mockean `supabase-js` se reescriben contra el nuevo cliente.
+Los tests que mockean `supabase-js` se reescriben contra el nuevo cliente
+(`src/test/drizzleMock.ts`).
+
+Decisiones que conviene saber:
+- Las claves del schema de Drizzle son las columnas en snake_case y los
+  timestamps salen en ISO (`isoTimestamp` en `server/db/pg.ts`): una fila de
+  Drizzle es la misma que devolvía PostgREST, así que las APIs del panel y
+  los componentes no cambiaron.
+- Las funciones SQL se llaman con `rpc()` (`server/db/rpc.ts`), con
+  argumentos por nombre como antes.
+- Se fueron las capas de compatibilidad con migraciones viejas: leer de
+  `v_store_products_current` si faltaba `mv_catalog`, dejar de pedir columnas
+  que una vista no publicaba, calcular facetas sin las vistas de 0013, y el
+  `public_slug` opcional del sitemap. La base tiene todas las migraciones
+  hasta la 0057 y la de Hetzner llega por dump.
+- `src/lib/analytics/botLog.ts` (el registro de bots del proxy) hacía un
+  `fetch` directo a la API REST: ahora inserta por Drizzle.
+- Ya no hay tope de 1 000 filas por respuesta: los bucles que paginaban por
+  eso se simplificaron (categorías del panel, conteos por categoría).
+- Quedan en Supabase, para la fase 3: Storage (logos, imágenes de categorías y
+  tiendas, sitemaps) y los scripts sueltos `scripts/seed-category-content.mjs`
+  y `scripts/relink-category-images.mjs`.
 
 ### Fase 3 — Storage a R2
 1. Bucket R2 público con dominio propio (p. ej. `assets.findyourprices.com`).
@@ -65,11 +87,29 @@ Los tests que mockean `supabase-js` se reescriben contra el nuevo cliente.
    (`replace(url, '<supabase>/storage/v1/object/public/', 'https://assets…/')`).
 
 ### Fase 4 — Sesión de prueba (red del teléfono)
-Checklist en orden: conexión con `DATABASE_URL` → `drizzle-kit pull` y diff con
-el schema → `npm run test:run` → `npm run dev` y recorrer home, búsqueda,
-producto, categoría, tienda, cotización, panel (tiendas, categorías, aliados,
-tráfico, errores, scraping) → una corrida de scraping local de una tienda →
-`npm run cf:preview` con Hyperdrive.
+Antes: poner `DATABASE_URL` en `.env.local` (Supabase → Connect → "Session
+pooler", puerto 5432). Checklist en orden:
+1. `npm run db:pull` → conecta y deja la introspección en `drizzle/`; comparar
+   columnas con `src/server/db/schema.ts`.
+2. `npm run dev` y recorrer: portada, búsqueda (con y sin texto, con un error
+   de tipeo para la corrección), filtros y orden, ficha `/p/<slug>` (histórico,
+   variantes, precio en lempiras de Eneba), categoría, tienda, tienda ×
+   categoría, cotización, aliados y `/go/<aliado>`.
+3. Panel: scraping (lista, crear/editar target), categorías (cargar, mapear,
+   crear, renombrar), contenido de categorías y tiendas (guardar texto),
+   aliados (crear, editar, oferta), tráfico, errores (resolver un grupo).
+4. `npm run scrape:local` con una tienda chica, y `npm run sitemaps:generate`.
+5. Con `ERRORS_IN_DEV=1` y `ANALYTICS_IN_DEV=1`: que lleguen errores y visitas.
+6. `npm run cf:preview` con `localConnectionString` en wrangler.jsonc.
+
+Ojo con esto para producción:
+- El build de Cloudflare (Workers Builds) arma páginas consultando la base y
+  ahí no hay bindings: `DATABASE_URL` tiene que estar en Settings → Build →
+  Variables. En el Worker ya en marcha la conexión sale de Hyperdrive.
+- GitHub Actions necesita el secret `DATABASE_URL` (pooler de Supabase: los
+  runners no tienen IPv6 y la conexión directa de Supabase es solo IPv6).
+- Verificar los límites de Hyperdrive y de conexiones TCP en el plan Free de
+  Workers antes del corte.
 
 ### Fase 5 — Corte a producción todavía sobre Supabase
 Crear Hyperdrive apuntando a Supabase, desplegar, mirar errores un par de días.

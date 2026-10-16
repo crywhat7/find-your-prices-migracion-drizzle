@@ -1,5 +1,7 @@
 import 'server-only';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { and, asc, gt, inArray, notInArray } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { mvCatalog as m } from '@/server/db/schema';
 import { withRetry } from '@/server/services/catalog';
 import type {
   QuoteAvailability,
@@ -31,13 +33,29 @@ export const MAX_QUOTE_IDS = 100;
 /** Cuántas tiendas alternativas se devuelven por renglón. */
 const MAX_ALTERNATIVES = 3;
 
-const COLUMNS =
-  'id, public_slug, name, brand, store_name, store_slug, store_category_name, category_raw, ' +
-  'category_name, price, list_price, currency, url, primary_image_url, availability, ' +
-  'last_seen_at, last_price_change_at, gtin';
+const COLUMNS = {
+  id: m.id,
+  public_slug: m.public_slug,
+  name: m.name,
+  brand: m.brand,
+  store_name: m.store_name,
+  store_slug: m.store_slug,
+  store_category_name: m.store_category_name,
+  category_raw: m.category_raw,
+  category_name: m.category_name,
+  price: m.price,
+  list_price: m.list_price,
+  currency: m.currency,
+  url: m.url,
+  primary_image_url: m.primary_image_url,
+  availability: m.availability,
+  last_seen_at: m.last_seen_at,
+  last_price_change_at: m.last_price_change_at,
+  gtin: m.gtin,
+};
 
 /** Mismo piso que el catálogo: lo que no se puede comprar no es alternativa. */
-const UNAVAILABLE_STATES = ['out_of_stock', 'discontinued'];
+const UNAVAILABLE_STATES: Array<(typeof m.availability.enumValues)[number]> = ['out_of_stock', 'discontinued'];
 
 interface OfferRow {
   id: string;
@@ -95,29 +113,25 @@ export async function getQuoteOffers(ids: string[]): Promise<QuoteLineResult[]> 
   if (unique.length === 0) return [];
 
   return withRetry('cotización', async () => {
-    const db = getSupabaseAdmin();
+    const db = getDb();
 
-    const { data, error } = await db.from('mv_catalog').select(COLUMNS).in('id', unique);
-    if (error) throw new Error(error.message);
+    const data = await db.select(COLUMNS).from(m).where(inArray(m.id, unique));
 
     const byId = new Map<string, QuoteOffer>();
-    for (const row of (data ?? []) as unknown as OfferRow[]) byId.set(row.id, toOffer(row));
+    for (const row of data as OfferRow[]) byId.set(row.id, toOffer(row));
 
     const gtins = [...new Set([...byId.values()].map((offer) => offer.gtin).filter(Boolean))] as string[];
     const byGtin = new Map<string, QuoteOffer[]>();
 
     if (gtins.length > 0) {
-      const { data: matches, error: matchError } = await db
-        .from('mv_catalog')
+      const matches = await db
         .select(COLUMNS)
-        .in('gtin', gtins)
-        .gt('price', 0)
-        .not('availability', 'in', `("${UNAVAILABLE_STATES.join('","')}")`)
-        .order('price', { ascending: true })
+        .from(m)
+        .where(and(inArray(m.gtin, gtins), gt(m.price, 0), notInArray(m.availability, UNAVAILABLE_STATES)))
+        .orderBy(asc(m.price))
         .limit(gtins.length * 12);
-      if (matchError) throw new Error(matchError.message);
 
-      for (const row of (matches ?? []) as unknown as OfferRow[]) {
+      for (const row of matches as OfferRow[]) {
         if (!row.gtin) continue;
         const list = byGtin.get(row.gtin) ?? [];
         list.push(toOffer(row));

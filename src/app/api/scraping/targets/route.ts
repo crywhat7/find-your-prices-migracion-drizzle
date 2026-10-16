@@ -1,5 +1,8 @@
 import { assertAdminAuthorized, toErrorResponse } from '@/server/scraping/api-guard';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { asc } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { pgErrorCode } from '@/server/db/pg';
+import { scrapeTargets, vScrapeTargetHealth } from '@/server/db/schema';
 import { hasStrategy } from '@/server/scraping/registry';
 
 /**
@@ -12,21 +15,20 @@ import { hasStrategy } from '@/server/scraping/registry';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const TARGET_KINDS = ['full_catalog', 'category', 'search', 'product_detail', 'sitemap', 'feed'];
+const TARGET_KINDS: readonly string[] = scrapeTargets.kind.enumValues;
+type TargetKind = (typeof scrapeTargets.kind.enumValues)[number];
 
 export async function GET(request: Request): Promise<Response> {
   try {
     assertAdminAuthorized(request);
 
     // La vista ya trae tienda, ultima corrida y contadores resueltos.
-    const { data, error } = await getSupabaseAdmin()
-      .from('v_scrape_target_health')
-      .select('*')
-      .order('store_name', { ascending: true })
-      .order('target_name', { ascending: true });
+    const targets = await getDb()
+      .select()
+      .from(vScrapeTargetHealth)
+      .orderBy(asc(vScrapeTargetHealth.store_name), asc(vScrapeTargetHealth.target_name));
 
-    if (error) throw new Error(error.message);
-    return Response.json({ ok: true, targets: data ?? [] });
+    return Response.json({ ok: true, targets });
   } catch (error) {
     return toErrorResponse(error);
   }
@@ -40,7 +42,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const storeId = typeof body.store_id === 'string' ? body.store_id : null;
     const name = typeof body.name === 'string' ? body.name.trim() : '';
-    const kind = typeof body.kind === 'string' ? body.kind : 'category';
+    const kind = (typeof body.kind === 'string' ? body.kind : 'category') as TargetKind;
 
     if (!storeId) return badRequest('store_id es obligatorio');
     if (!name) return badRequest('name es obligatorio');
@@ -69,15 +71,18 @@ export async function POST(request: Request): Promise<Response> {
     const anchorDate = anchorRaw ? new Date(anchorRaw) : new Date();
     const anchor = Number.isFinite(anchorDate.getTime()) ? anchorDate : new Date();
 
-    const { data, error } = await getSupabaseAdmin()
-      .from('scrape_targets')
-      .insert({
+    let target: typeof scrapeTargets.$inferSelect | undefined;
+    try {
+      [target] = await getDb()
+        .insert(scrapeTargets)
+        .values({
         store_id: storeId,
         name,
         kind,
         url: typeof body.url === 'string' && body.url ? body.url : null,
         strategy_key: strategyKey,
-        config: typeof body.config === 'object' && body.config !== null ? body.config : {},
+        config:
+          typeof body.config === 'object' && body.config !== null ? (body.config as Record<string, unknown>) : {},
         frequency_minutes: frequencyMinutes,
         schedule_anchor_at: anchor.toISOString(),
         next_run_at: anchor.toISOString(),
@@ -85,19 +90,17 @@ export async function POST(request: Request): Promise<Response> {
         priority: Number.isFinite(Number(body.priority)) ? Number(body.priority) : 100,
         is_active: body.is_active !== false,
         notes: typeof body.notes === 'string' ? body.notes : null,
-      })
-      .select('*')
-      .single();
-
-    if (error) {
+        })
+        .returning();
+    } catch (error) {
       // Choque con el indice unique (store_id, url).
-      if (error.code === '23505') {
+      if (pgErrorCode(error) === '23505') {
         return badRequest('Ya existe un target con esa url para esta tienda');
       }
-      throw new Error(error.message);
+      throw error;
     }
 
-    return Response.json({ ok: true, target: data }, { status: 201 });
+    return Response.json({ ok: true, target }, { status: 201 });
   } catch (error) {
     return toErrorResponse(error);
   }

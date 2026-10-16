@@ -1,5 +1,8 @@
 import 'server-only';
 import { revalidatePath, revalidateTag } from 'next/cache';
+import { asc, eq, sql } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { categories, categoryContent } from '@/server/db/schema';
 import { getSupabaseAdmin } from '@/server/db/supabase';
 import type { Locale } from '@/features/i18n/translate';
 import { categoryPaths, categoryIndexPaths } from '@/lib/seo/categorySeo';
@@ -14,6 +17,9 @@ import { CATALOG_SEARCH_CACHE_TAG } from './catalog';
  * la puerta de `/admin`. Cada guardado revalida las landings afectadas: la
  * página de la categoría en los dos idiomas, la de su madre (que la lista) y
  * el índice, para que el cambio se vea sin esperar la hora de ISR.
+ *
+ * Las filas van por Drizzle; los archivos siguen en Supabase Storage hasta la
+ * fase 3 de docs/migracion-drizzle.md (R2).
  */
 
 export const CATEGORY_IMAGES_BUCKET = 'category-images';
@@ -50,29 +56,27 @@ const EMPTY_FIELDS: CategoryContentFields = {
 };
 
 export async function listCategoriesForContent(): Promise<CategoryContentRow[]> {
-  const db = getSupabaseAdmin();
-  const [categories, content] = await Promise.all([
+  const db = getDb();
+  const [categoryRows, content] = await Promise.all([
     db
-      .from('categories')
-      .select('id, parent_id, slug, name, level, is_active, image_url, image_alt, featured_position')
-      .order('level')
-      .order('position')
-      .order('name'),
-    db.from('category_content').select('category_id, locale, title, meta_description, intro, body, keywords'),
+      .select({
+        id: categories.id,
+        parent_id: categories.parent_id,
+        slug: categories.slug,
+        name: categories.name,
+        level: categories.level,
+        is_active: categories.is_active,
+        image_url: categories.image_url,
+        image_alt: categories.image_alt,
+        featured_position: categories.featured_position,
+      })
+      .from(categories)
+      .orderBy(asc(categories.level), asc(categories.position), asc(categories.name)),
+    db.select().from(categoryContent),
   ]);
-  if (categories.error) throw new Error(categories.error.message);
-  if (content.error) throw new Error(content.error.message);
 
   const byCategory = new Map<string, Record<Locale, CategoryContentFields>>();
-  for (const row of (content.data ?? []) as Array<{
-    category_id: string;
-    locale: Locale;
-    title: string | null;
-    meta_description: string | null;
-    intro: string | null;
-    body: string | null;
-    keywords: string[] | null;
-  }>) {
+  for (const row of content) {
     const entry = byCategory.get(row.category_id) ?? { es: EMPTY_FIELDS, en: EMPTY_FIELDS };
     entry[row.locale] = {
       title: row.title ?? '',
@@ -84,17 +88,17 @@ export async function listCategoriesForContent(): Promise<CategoryContentRow[]> 
     byCategory.set(row.category_id, entry);
   }
 
-  return ((categories.data ?? []) as Array<Record<string, unknown>>).map((row) => ({
-    id: String(row.id),
-    parentId: (row.parent_id as string | null) ?? null,
-    slug: String(row.slug),
-    name: String(row.name),
+  return categoryRows.map((row) => ({
+    id: row.id,
+    parentId: row.parent_id ?? null,
+    slug: row.slug,
+    name: row.name,
     level: Number(row.level),
-    isActive: Boolean(row.is_active),
-    imageUrl: (row.image_url as string | null) ?? null,
-    imageAlt: (row.image_alt as string | null) ?? null,
-    featuredPosition: (row.featured_position as number | null) ?? null,
-    content: byCategory.get(String(row.id)) ?? { es: EMPTY_FIELDS, en: EMPTY_FIELDS },
+    isActive: row.is_active,
+    imageUrl: row.image_url ?? null,
+    imageAlt: row.image_alt ?? null,
+    featuredPosition: row.featured_position ?? null,
+    content: byCategory.get(row.id) ?? { es: EMPTY_FIELDS, en: EMPTY_FIELDS },
   }));
 }
 
@@ -120,15 +124,14 @@ export interface SaveCategoryContentInput {
 }
 
 export async function saveCategoryContent(id: string, input: SaveCategoryContentInput): Promise<void> {
-  const db = getSupabaseAdmin();
+  const db = getDb();
 
-  const category = await db
-    .from('categories')
-    .update({ image_alt: nullable(input.imageAlt), featured_position: input.featuredPosition })
-    .eq('id', id)
-    .select('slug, parent_id')
-    .single();
-  if (category.error) throw new Error(category.error.message);
+  const [category] = await db
+    .update(categories)
+    .set({ image_alt: nullable(input.imageAlt), featured_position: input.featuredPosition })
+    .where(eq(categories.id, id))
+    .returning({ slug: categories.slug, parent_id: categories.parent_id });
+  if (!category) throw new Error('Categoría no encontrada.');
 
   const rows = (['es', 'en'] as const).map((locale) => {
     const fields = input.content[locale];
@@ -143,10 +146,21 @@ export async function saveCategoryContent(id: string, input: SaveCategoryContent
     };
   });
 
-  const upsert = await db.from('category_content').upsert(rows, { onConflict: 'category_id,locale' });
-  if (upsert.error) throw new Error(upsert.error.message);
+  await db
+    .insert(categoryContent)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: [categoryContent.category_id, categoryContent.locale],
+      set: {
+        title: sql`excluded.title`,
+        meta_description: sql`excluded.meta_description`,
+        intro: sql`excluded.intro`,
+        body: sql`excluded.body`,
+        keywords: sql`excluded.keywords`,
+      },
+    });
 
-  await revalidateCategory(String(category.data.slug), category.data.parent_id as string | null);
+  await revalidateCategory(category.slug, category.parent_id);
 }
 
 /**
@@ -160,44 +174,50 @@ export async function uploadCategoryImage(id: string, file: File): Promise<strin
   if (!file.type.startsWith('image/')) throw new Error('El archivo tiene que ser una imagen.');
   if (file.size > 5 * 1024 * 1024) throw new Error('La imagen no puede pasar de 5 MB.');
 
-  const db = getSupabaseAdmin();
-  const category = await db.from('categories').select('slug, parent_id, image_url').eq('id', id).single();
-  if (category.error) throw new Error(category.error.message);
+  const category = await readCategory(id);
 
   const extension = (file.name.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-  const objectPath = `${category.data.slug}-${Date.now().toString(36)}.${extension}`;
+  const objectPath = `${category.slug}-${Date.now().toString(36)}.${extension}`;
 
   // Los bytes y no el `File`: con un File, supabase-js decide el tipo MIME
   // según el runtime (en Node lo mandaba como text/plain y el bucket lo
   // rechazaba). Con un ArrayBuffer manda exactamente `contentType`.
   const bytes = await file.arrayBuffer();
-  const upload = await db.storage
+  const storage = getSupabaseAdmin().storage;
+  const upload = await storage
     .from(CATEGORY_IMAGES_BUCKET)
     .upload(objectPath, bytes, { contentType: file.type, cacheControl: '31536000', upsert: false });
   if (upload.error) throw new Error(`No se pudo subir la imagen: ${upload.error.message}`);
 
-  const { data } = db.storage.from(CATEGORY_IMAGES_BUCKET).getPublicUrl(objectPath);
+  const { data } = storage.from(CATEGORY_IMAGES_BUCKET).getPublicUrl(objectPath);
   const publicUrl = data.publicUrl;
 
-  const update = await db.from('categories').update({ image_url: publicUrl }).eq('id', id);
-  if (update.error) throw new Error(update.error.message);
+  await getDb().update(categories).set({ image_url: publicUrl }).where(eq(categories.id, id));
 
   // La foto anterior ya no la referencia nadie: se borra para no acumular.
-  await removeStoredObject(category.data.image_url as string | null);
-  await revalidateCategory(String(category.data.slug), category.data.parent_id as string | null);
+  await removeStoredObject(category.image_url);
+  await revalidateCategory(category.slug, category.parent_id);
   return publicUrl;
 }
 
 export async function removeCategoryImage(id: string): Promise<void> {
-  const db = getSupabaseAdmin();
-  const category = await db.from('categories').select('slug, parent_id, image_url').eq('id', id).single();
-  if (category.error) throw new Error(category.error.message);
+  const category = await readCategory(id);
 
-  const update = await db.from('categories').update({ image_url: null }).eq('id', id);
-  if (update.error) throw new Error(update.error.message);
+  await getDb().update(categories).set({ image_url: null }).where(eq(categories.id, id));
 
-  await removeStoredObject(category.data.image_url as string | null);
-  await revalidateCategory(String(category.data.slug), category.data.parent_id as string | null);
+  await removeStoredObject(category.image_url);
+  await revalidateCategory(category.slug, category.parent_id);
+}
+
+async function readCategory(
+  id: string,
+): Promise<{ slug: string; parent_id: string | null; image_url: string | null }> {
+  const [category] = await getDb()
+    .select({ slug: categories.slug, parent_id: categories.parent_id, image_url: categories.image_url })
+    .from(categories)
+    .where(eq(categories.id, id));
+  if (!category) throw new Error('Categoría no encontrada.');
+  return category;
 }
 
 /** Borra el objeto del bucket si la URL es de este bucket. Nunca lanza. */
@@ -217,8 +237,11 @@ async function revalidateCategory(slug: string, parentId: string | null): Promis
     ...Object.values(categoryIndexPaths()),
   ]);
   if (parentId) {
-    const parent = await getSupabaseAdmin().from('categories').select('slug').eq('id', parentId).single();
-    if (!parent.error) for (const path of Object.values(categoryPaths(String(parent.data.slug)))) paths.add(path);
+    const [parent] = await getDb()
+      .select({ slug: categories.slug })
+      .from(categories)
+      .where(eq(categories.id, parentId));
+    if (parent) for (const path of Object.values(categoryPaths(parent.slug))) paths.add(path);
   }
   for (const path of paths) revalidatePath(path);
   // Las búsquedas acotadas no cambian con el texto, pero sí las facetas

@@ -1,4 +1,5 @@
 import 'server-only';
+import { pgErrorMessage } from '@/server/db/pg';
 
 /**
  * Autenticacion de los endpoints de scraping y administracion.
@@ -74,6 +75,6 @@ export function toErrorResponse(error: unknown): Response {
     return Response.json({ ok: false, error: error.message }, { status: 401 });
   }
 
-  const message = error instanceof Error ? error.message : String(error);
-  return Response.json({ ok: false, error: message }, { status: 500 });
+  // pgErrorMessage: el error de Postgres, no el "Failed query: …" de Drizzle con la consulta entera.
+  return Response.json({ ok: false, error: pgErrorMessage(error) }, { status: 500 });
 }

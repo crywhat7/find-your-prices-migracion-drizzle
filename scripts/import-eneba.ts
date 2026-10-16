@@ -29,7 +29,10 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { and, count, eq } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { pgErrorMessage } from '@/server/db/pg';
+import { exchangeRates, scrapeTargets, storeProducts, stores } from '@/server/db/schema';
 import { publishCatalog, recoverStaleRuns, runTarget, type ScrapeSnapshot } from '@/server/scraping/runner';
 import { ENEBA_CATEGORIES, parseEnebaFeed, type EnebaCategoryKey } from '@/server/scraping/strategies/eneba';
 import type { ScrapeTargetRow, StoreRow } from '@/server/scraping/types';
@@ -106,18 +109,15 @@ const money = (value: number, currency: string) =>
   `${currency} ${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 async function loadStoreAndTarget(): Promise<{ store: StoreRow; target: ScrapeTargetRow }> {
-  const db = getSupabaseAdmin();
-  const { data: store, error } = await db.from('stores').select('*').eq('slug', STORE_SLUG).maybeSingle();
-  if (error) throw new Error(`No se pudo leer la tienda: ${error.message}`);
-  if (!store) throw new Error('No existe la tienda "eneba". Correr src/db/migrations/0054 y 0055 en Supabase.');
+  const db = getDb();
+  const [store] = await db.select().from(stores).where(eq(stores.slug, STORE_SLUG));
+  if (!store) throw new Error('No existe la tienda "eneba". Correr src/db/migrations/0054 y 0055.');
 
-  const { data: targets, error: targetError } = await db
-    .from('scrape_targets')
-    .select('*')
-    .eq('store_id', store.id)
-    .eq('kind', 'full_catalog');
-  if (targetError) throw new Error(`No se pudo leer el target: ${targetError.message}`);
-  if (!targets || targets.length !== 1) {
+  const targets = await db
+    .select()
+    .from(scrapeTargets)
+    .where(and(eq(scrapeTargets.store_id, store.id), eq(scrapeTargets.kind, 'full_catalog')));
+  if (targets.length !== 1) {
     throw new Error(`Se esperaba un target full_catalog para Eneba y hay ${targets?.length ?? 0}. Revisar 0055.`);
   }
   return { store: store as StoreRow, target: targets[0] as ScrapeTargetRow };
@@ -177,18 +177,22 @@ async function main(): Promise<number> {
   // Chequeos contra la base
   // ---------------------------------------------------------------------------
   const { store, target } = context;
-  const db = getSupabaseAdmin();
+  const db = getDb();
 
   if (!store.is_active) {
     console.error('\nLa tienda Eneba esta inactiva: el runner no la procesa. Activarla desde el panel o en stores.is_active.');
     return 1;
   }
 
-  const { data: rates, error: ratesError } = await db.from('exchange_rates').select('currency, rate_to_hnl, updated_at');
-  if (ratesError) {
-    console.warn(`\nNo se pudieron leer las tasas de cambio (${ratesError.message}). ¿Corrio la migracion 0054?`);
-  } else {
-    const byCurrency = new Map((rates ?? []).map((row) => [String(row.currency), row]));
+  const rates = await db
+    .select({ currency: exchangeRates.currency, rate_to_hnl: exchangeRates.rate_to_hnl, updated_at: exchangeRates.updated_at })
+    .from(exchangeRates)
+    .catch((error: unknown) => {
+      console.warn(`\nNo se pudieron leer las tasas de cambio (${pgErrorMessage(error)}). ¿Corrio la migracion 0054?`);
+      return null;
+    });
+  if (rates) {
+    const byCurrency = new Map(rates.map((row) => [String(row.currency), row]));
     for (const currency of currencies.keys()) {
       const rate = byCurrency.get(currency);
       if (!rate) {
@@ -203,12 +207,10 @@ async function main(): Promise<number> {
     }
   }
 
-  const { count: activeNow, error: countError } = await db
-    .from('store_products')
-    .select('id', { count: 'exact', head: true })
-    .eq('store_id', store.id)
-    .eq('is_active', true);
-  if (countError) throw new Error(`No se pudo contar el catalogo actual: ${countError.message}`);
+  const [{ n: activeNow }] = await db
+    .select({ n: count() })
+    .from(storeProducts)
+    .where(and(eq(storeProducts.store_id, store.id), eq(storeProducts.is_active, true)));
 
   const incomingIds = new Set(products.map((p) => p.external_id));
   console.info(`\nHoy Eneba tiene ${activeNow ?? 0} productos activos; el archivo trae ${incomingIds.size}.`);

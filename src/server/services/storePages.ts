@@ -1,7 +1,16 @@
 import 'server-only';
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { and, asc, desc, eq, gt, inArray } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { rpc } from '@/server/db/rpc';
+import {
+  storeCategories,
+  storeProducts,
+  stores as storesTable,
+  vCatalogStoreCategoryFacets,
+  vCatalogStoreFacets,
+} from '@/server/db/schema';
 import type { Locale } from '@/features/i18n/translate';
 import type { FacetOption } from '@/features/products/categoryFacets';
 import { DEFAULT_SORT } from '@/features/products/sortProducts';
@@ -100,29 +109,34 @@ interface RawStore {
   image_alt: string | null;
 }
 
-/** Tiendas activas con su cifra. Sin la 0033 no hay `image_alt`: se pinta sin él. */
+/** Tiendas activas con su cifra. */
 async function loadStoreRows(): Promise<StoreNode[]> {
-  const db = getSupabaseAdmin();
-  const selectStores = (columns: string) =>
-    db.from('stores').select(columns).eq('is_active', true).order('name');
+  const db = getDb();
 
-  const [firstTry, facets] = await Promise.all([
-    selectStores('id, slug, name, base_url, logo_url, image_alt'),
-    db.from('v_catalog_store_facets').select('store_slug, product_count'),
+  const [stores, facets] = await Promise.all([
+    db
+      .select({
+        id: storesTable.id,
+        slug: storesTable.slug,
+        name: storesTable.name,
+        base_url: storesTable.base_url,
+        logo_url: storesTable.logo_url,
+        image_alt: storesTable.image_alt,
+      })
+      .from(storesTable)
+      .where(eq(storesTable.is_active, true))
+      .orderBy(asc(storesTable.name)),
+    db
+      .select({ store_slug: vCatalogStoreFacets.store_slug, product_count: vCatalogStoreFacets.product_count })
+      .from(vCatalogStoreFacets),
   ]);
-  const stores =
-    firstTry.error && firstTry.error.code === '42703'
-      ? await selectStores('id, slug, name, base_url, logo_url')
-      : firstTry;
-  if (stores.error) throw new Error(stores.error.message);
-  if (facets.error) throw new Error(facets.error.message);
 
   const counts = new Map<string, number>();
-  for (const row of (facets.data ?? []) as Array<{ store_slug: string; product_count: number }>) {
+  for (const row of facets) {
     counts.set(row.store_slug, Number(row.product_count ?? 0));
   }
 
-  return ((stores.data ?? []) as unknown as Partial<RawStore>[]).map((row) => {
+  return (stores as Partial<RawStore>[]).map((row) => {
     const slug = String(row.slug);
     return {
       id: String(row.id),
@@ -163,10 +177,17 @@ interface StoreCategoryCountRow {
 /** Conteo directo por (tienda, slug de categoría). Vacío si la 0033 no corrió. */
 const loadStoreCategoryCountRows = unstable_cache(
   async (): Promise<StoreCategoryCountRow[]> => {
-    const { data, error } = await getSupabaseAdmin()
-      .from('v_catalog_store_category_facets')
-      .select('store_slug, slug, product_count');
-    return error ? [] : ((data ?? []) as StoreCategoryCountRow[]);
+    try {
+      return await getDb()
+        .select({
+          store_slug: vCatalogStoreCategoryFacets.store_slug,
+          slug: vCatalogStoreCategoryFacets.slug,
+          product_count: vCatalogStoreCategoryFacets.product_count,
+        })
+        .from(vCatalogStoreCategoryFacets);
+    } catch {
+      return [];
+    }
   },
   ['store-category-counts'],
   { revalidate: CATALOG_SEARCH_CACHE_SECONDS, tags: [CATALOG_SEARCH_CACHE_TAG] },
@@ -253,32 +274,28 @@ async function getPopularProducts(
   locale: Locale,
   limit: number,
 ): Promise<Product[]> {
-  const db = getSupabaseAdmin();
+  const db = getDb();
+  const sp = storeProducts;
 
-  let request = db
-    .from('store_products')
-    .select(
-      category
-        ? 'id, click_count, store_categories!inner(category_id)'
-        : 'id, click_count',
-    )
-    .eq('store_id', store.id)
-    .gt('click_count', 0)
-    .eq('is_active', true);
+  const filters = [eq(sp.store_id, store.id), gt(sp.click_count, 0), eq(sp.is_active, true)];
   if (category) {
-    request = request.in(
-      'store_categories.category_id',
-      [category.id, ...children.map((child) => child.id)],
-    );
+    filters.push(inArray(storeCategories.category_id, [category.id, ...children.map((child) => child.id)]));
   }
-  const clicked = await request
-    .order('click_count', { ascending: false })
-    .order('last_clicked_at', { ascending: false })
-    .limit(limit * 2);
 
-  const clickedIds = clicked.error
-    ? []
-    : ((clicked.data ?? []) as unknown as Array<{ id: string }>).map((row) => row.id);
+  let clickedIds: string[] = [];
+  try {
+    const base = db.select({ id: sp.id }).from(sp);
+    const scoped = category
+      ? base.innerJoin(storeCategories, eq(storeCategories.id, sp.store_category_id))
+      : base;
+    const clicked = await scoped
+      .where(and(...filters))
+      .orderBy(desc(sp.click_count), desc(sp.last_clicked_at))
+      .limit(limit * 2);
+    clickedIds = clicked.map((row) => row.id);
+  } catch {
+    // Sin clics no hay ranking: quedan las ofertas.
+  }
 
   const scope = {
     storeSlug: store.slug,
@@ -310,11 +327,13 @@ async function getPopularProducts(
 }
 
 async function getScopedFacets(storeSlug: string, categorySlug: string | null): Promise<ScopedFacets> {
-  const { data, error } = await getSupabaseAdmin().rpc('catalog_store_facets', {
-    p_store_slug: storeSlug,
-    p_slug: categorySlug,
-  });
-  if (error || !data) return EMPTY_SCOPED_FACETS;
+  let data: unknown;
+  try {
+    data = await rpc('catalog_store_facets', { p_store_slug: storeSlug, p_slug: categorySlug });
+  } catch {
+    return EMPTY_SCOPED_FACETS;
+  }
+  if (!data) return EMPTY_SCOPED_FACETS;
 
   const payload = data as {
     total?: number;

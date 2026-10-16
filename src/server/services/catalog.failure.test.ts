@@ -15,61 +15,34 @@ vi.mock("server-only", () => import("@/test/server-only-stub"));
 
 const state = vi.hoisted(() => ({ failures: 0, calls: 0 }));
 
-vi.mock("@/server/db/supabase", () => {
-  /** Un builder encadenable que resuelve como PostgREST, o revienta N veces. */
-  function builder(): Record<string, unknown> {
-    const chain: Record<string, unknown> = {};
-    const self = () => chain;
-    for (const method of [
-      "select",
-      "not",
-      "gt",
-      "eq",
-      "in",
-      "is",
-      "or",
-      "ilike",
-      "textSearch",
-      "gte",
-      "lte",
-      "order",
-      "range",
-      "limit",
-      "from",
-      "maybeSingle",
-      "single",
-    ]) {
-      chain[method] = self;
+vi.mock("@/server/db/client", async () => {
+  const { createDrizzleMock } = await import("@/test/drizzleMock");
+  /** Cada consulta resuelve vacía, o revienta mientras queden fallos. */
+  const { db } = createDrizzleMock(() => {
+    state.calls += 1;
+    if (state.failures > 0) {
+      state.failures -= 1;
+      throw new Error("fetch failed");
     }
-    // `then` hace que `await builder` resuelva. Es lo que hace supabase-js.
-    chain.then = (
-      resolve: (value: unknown) => void,
-      reject: (error: unknown) => void,
-    ) => {
-      state.calls += 1;
-      if (state.failures > 0) {
-        state.failures -= 1;
-        reject(new Error("fetch failed"));
-        return;
-      }
-      resolve({ data: [], error: null, count: 0 });
-    };
-    return chain;
-  }
-  return { getSupabaseAdmin: () => builder() };
+    return [];
+  });
+  return { getDb: () => db, hasDatabaseConfig: () => Boolean(process.env.DATABASE_URL) };
 });
+
+// Import estático: cargar el módulo (y drizzle-orm) dentro del primer test se
+// comía su plazo de 5 s con la suite completa corriendo en paralelo.
+import { getCatalogSnapshot, getProductDetail, searchCatalog } from "./catalog";
 
 // Con la variable puesta, el servicio considera que HAY base y no debe caer
 // al fixture. Sin ella, `hasDatabase()` es falso y el fixture es lo correcto.
 beforeEach(() => {
-  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+  process.env.DATABASE_URL = "postgresql://prueba";
   state.failures = 0;
   state.calls = 0;
 });
 
 describe("getCatalogSnapshot ante fallos de base", () => {
   test("un fallo persistente se lanza, no se devuelve un catálogo vacío", async () => {
-    const { getCatalogSnapshot } = await import("./catalog");
     state.failures = 100;
     await expect(getCatalogSnapshot({ limit: 10 })).rejects.toThrow(
       /fetch failed/,
@@ -77,7 +50,6 @@ describe("getCatalogSnapshot ante fallos de base", () => {
   });
 
   test("un fallo pasajero se reintenta y la lectura sale bien", async () => {
-    const { searchCatalog } = await import("./catalog");
     state.failures = 1;
     const result = await searchCatalog({ limit: 10 });
     expect(result).toEqual({ products: [], total: 0 });
@@ -85,8 +57,7 @@ describe("getCatalogSnapshot ante fallos de base", () => {
   });
 
   test("sin base configurada devuelve vacío sin tocar la red (modo fixture)", async () => {
-    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const { getCatalogSnapshot } = await import("./catalog");
+    delete process.env.DATABASE_URL;
     const snapshot = await getCatalogSnapshot({ limit: 10 });
     expect(snapshot.products).toEqual([]);
     expect(state.calls).toBe(0);
@@ -95,7 +66,6 @@ describe("getCatalogSnapshot ante fallos de base", () => {
 
 describe("getProductDetail ante fallos de base", () => {
   test("un error de red no se convierte en 404", async () => {
-    const { getProductDetail } = await import("./catalog");
     state.failures = 100;
     await expect(getProductDetail("algun-slug")).rejects.toThrow();
   });

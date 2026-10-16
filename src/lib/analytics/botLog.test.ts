@@ -1,10 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const inserted = vi.fn();
+vi.mock("@/server/db/connection", () => ({
+  getDb: () => ({ insert: () => ({ values: async (row: unknown) => inserted(row) }) }),
+}));
+
 import { inBotSample, logBotVisit, shouldLogBot } from "./botLog";
 
 const GOOGLEBOT = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
 const PERSON = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36";
 
 afterEach(() => {
+  inserted.mockClear();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -39,23 +46,16 @@ describe("inBotSample", () => {
 });
 
 describe("logBotVisit", () => {
-  it("manda la fila marcada como bot a la API REST de Supabase", async () => {
+  it("inserta la fila marcada como bot en page_views", async () => {
     vi.stubEnv("ANALYTICS_IN_DEV", "1");
-    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://ejemplo.supabase.co");
-    vi.stubEnv("SUPABASE_SECRET_KEY", "sb_secret_prueba");
-    const fetchMock = vi.fn(async () => new Response(null, { status: 201 }));
-    vi.stubGlobal("fetch", fetchMock);
 
     await logBotVisit(
       new URL("https://findyourprices.com/en/stores/diunsa?utm_source=Prueba"),
       new Headers({ "user-agent": GOOGLEBOT, "cf-ipcountry": "US", "cf-connecting-ip": "66.249.66.1" }),
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("https://ejemplo.supabase.co/rest/v1/page_views");
-    expect((init.headers as Record<string, string>)["Content-Profile"]).toBe("find_your_prices");
-    expect(JSON.parse(String(init.body))).toMatchObject({
+    expect(inserted).toHaveBeenCalledTimes(1);
+    expect(inserted.mock.calls[0][0]).toMatchObject({
       path: "/en/stores/diunsa",
       page_type: "store",
       locale: "en",
@@ -69,12 +69,8 @@ describe("logBotVisit", () => {
   it("en desarrollo no manda nada", async () => {
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("ANALYTICS_IN_DEV", "");
-    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://ejemplo.supabase.co");
-    vi.stubEnv("SUPABASE_SECRET_KEY", "sb_secret_prueba");
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
 
     await logBotVisit(new URL("https://findyourprices.com/tiendas"), new Headers({ "user-agent": GOOGLEBOT }));
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(inserted).not.toHaveBeenCalled();
   });
 });

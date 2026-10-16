@@ -2,7 +2,7 @@
  * Repite la ingesta de descargas guardadas, SIN volver a scrapear. Solo local.
  *
  * Las descargas las guarda scripts/scrape-all-local.ts en scrape-data/ antes de
- * escribir en la base. Si la ingesta fallo (timeout de Supabase, red, etc.),
+ * escribir en la base. Si la ingesta fallo (timeout de la base, red, etc.),
  * esto la repite con el mismo pipeline del runner: abre una corrida 'backfill'
  * en la bitacora, sincroniza categorias, ingiere, marca bajas y reprograma el
  * target.
@@ -19,7 +19,9 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { eq } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { scrapeTargets, stores } from '@/server/db/schema';
 import {
   publishCatalog,
   recoverStaleRuns,
@@ -49,7 +51,7 @@ async function main(): Promise<number> {
   console.info(`${files.length} snapshots`);
   await recoverStaleRuns();
 
-  const db = getSupabaseAdmin();
+  const db = getDb();
   const results: RunResult[] = [];
 
   for (const [i, file] of files.entries()) {
@@ -62,16 +64,12 @@ async function main(): Promise<number> {
       continue;
     }
 
-    const { data: target, error } = await db
-      .from('scrape_targets')
-      .select('*')
-      .eq('id', snapshot.targetId)
-      .single();
-    if (error || !target) {
+    const [target] = await db.select().from(scrapeTargets).where(eq(scrapeTargets.id, snapshot.targetId));
+    if (!target) {
       console.error(`    El target ${snapshot.targetId} ya no existe; se salta`);
       continue;
     }
-    const { data: store } = await db.from('stores').select('*').eq('id', target.store_id).single();
+    const [store] = await db.select().from(stores).where(eq(stores.id, target.store_id));
 
     console.info(
       `    ${snapshot.targetName}: ${snapshot.result.products.length} productos descargados el ${snapshot.scrapedAt}`,

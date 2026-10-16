@@ -35,7 +35,9 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { format } from 'node:util';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { eq } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { scrapeRuns, scrapeTargets, stores as storesTable } from '@/server/db/schema';
 import {
   publishCatalog,
   recoverStaleRuns,
@@ -116,18 +118,16 @@ process.on('SIGINT', () => {
 // -----------------------------------------------------------------------------
 
 async function loadTargets(): Promise<Array<{ target: ScrapeTargetRow; store: StoreRow }>> {
-  const db = getSupabaseAdmin();
-  const [targetsResult, storesResult] = await Promise.all([
-    db.from('scrape_targets').select('*'),
-    db.from('stores').select('*'),
+  const db = getDb();
+  const [targetRows, storeRows] = await Promise.all([
+    db.select().from(scrapeTargets),
+    db.select().from(storesTable),
   ]);
-  if (targetsResult.error) throw new Error(targetsResult.error.message);
-  if (storesResult.error) throw new Error(storesResult.error.message);
 
-  const storesById = new Map((storesResult.data as StoreRow[]).map((store) => [store.id, store]));
+  const storesById = new Map((storeRows as StoreRow[]).map((store) => [store.id, store]));
   const now = Date.now();
 
-  return (targetsResult.data as ScrapeTargetRow[])
+  return (targetRows as ScrapeTargetRow[])
     .map((target) => ({ target, store: storesById.get(target.store_id)! }))
     .filter(({ target, store }) => {
       if (!store) return false;
@@ -231,7 +231,7 @@ async function main(): Promise<number> {
     );
 
     const runRow = result.runId
-      ? (await getSupabaseAdmin().from('scrape_runs').select('*').eq('id', result.runId).single()).data
+      ? ((await getDb().select().from(scrapeRuns).where(eq(scrapeRuns.id, result.runId)))[0] ?? null)
       : null;
     writeFileSync(
       join(logDir, `${String(i + 1).padStart(3, '0')}-${store.slug}-${slugify(target.name)}.json`),
@@ -259,7 +259,7 @@ Detenido: ${retryQueue.length} descargas sin ingerir. Para reingerirlas:`);
       console.info(`
 --- [${store.slug}] ${target.name} (${relative(process.cwd(), file)})`);
       // El target se relee: la corrida fallida le cambio el contador de fallos.
-      const { data: fresh } = await getSupabaseAdmin().from('scrape_targets').select('*').eq('id', target.id).single();
+      const [fresh] = await getDb().select().from(scrapeTargets).where(eq(scrapeTargets.id, target.id));
       const retried = await runTarget({
         target: (fresh as ScrapeTargetRow | null) ?? target,
         store,

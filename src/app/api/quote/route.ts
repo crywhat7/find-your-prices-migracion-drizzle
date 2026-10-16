@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasDatabaseConfig } from "@/server/db/client";
 import type { QuoteResponse } from "@/features/cart/types";
 import { getQuoteOffers, MAX_QUOTE_IDS } from "@/server/services/quote";
 import { logError } from "@/server/errors/logError";
@@ -38,7 +39,7 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json(empty);
   }
 
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  if (!hasDatabaseConfig()) {
     return NextResponse.json({ error: "no database" }, { status: 503 });
   }
 

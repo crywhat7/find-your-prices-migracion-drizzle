@@ -10,25 +10,22 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("server-only", () => import("@/test/server-only-stub"));
 
-const state = vi.hoisted(() => ({ selectOptions: [] as unknown[] }));
+import type { DrizzleCall } from "@/test/drizzleMock";
 
-vi.mock("@/server/db/supabase", () => {
-  function builder(): Record<string, unknown> {
-    const chain: Record<string, unknown> = {};
-    const self = () => chain;
-    for (const method of ["not", "eq", "in", "is", "or", "gt", "textSearch", "gte", "lte", "order", "range", "from"]) {
-      chain[method] = self;
-    }
-    chain.select = (_columns: string, options?: unknown) => {
-      state.selectOptions.push(options);
-      return chain;
-    };
-    chain.then = (resolve: (value: unknown) => void) =>
-      resolve({ data: [], error: null, count: 42 });
-    return chain;
-  }
-  return { getSupabaseAdmin: () => builder() };
+const state = vi.hoisted(() => ({ calls: [] as DrizzleCall[] }));
+
+vi.mock("@/server/db/client", async () => {
+  const { createDrizzleMock, isCount } = await import("@/test/drizzleMock");
+  // Las filas salen vacías y toda cuenta da 42.
+  const { db } = createDrizzleMock((call) => {
+    state.calls.push(call);
+    return isCount(call) ? [{ n: 42 }] : [];
+  });
+  return { getDb: () => db, hasDatabaseConfig: () => Boolean(process.env.DATABASE_URL) };
 });
+
+const pages = () => state.calls.filter((call) => call.kind === "select" && !("n" in (call.select ?? {})));
+const counts = () => state.calls.filter((call) => call.kind === "select" && "n" in (call.select ?? {}));
 
 // `unstable_cache` fuera de Next no tiene dónde guardar: se reemplaza por un
 // memo en memoria que registra las claves, que es lo que se quiere probar.
@@ -48,8 +45,8 @@ vi.mock("next/cache", () => ({
 import { normalizeSearchParams, searchCatalog, searchCatalogCached } from "./catalog";
 
 beforeEach(() => {
-  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
-  state.selectOptions = [];
+  process.env.DATABASE_URL = "postgresql://prueba";
+  state.calls = [];
   cacheState.keys = [];
 });
 
@@ -92,27 +89,27 @@ describe("searchCatalogCached", () => {
     await searchCatalogCached({ store: ["A", "B"], query: "tv", sort: "discount" });
     expect(cacheState.keys).toHaveLength(2);
     expect(cacheState.keys[0]).toBe(cacheState.keys[1]);
-    expect(state.selectOptions).toHaveLength(1);
+    expect(pages()).toHaveLength(1);
   });
 
   test("peticiones distintas no comparten entrada", async () => {
     await searchCatalogCached({ query: "tv" });
     await searchCatalogCached({ query: "tv", offset: 60 });
     expect(new Set(cacheState.keys).size).toBe(2);
-    expect(state.selectOptions).toHaveLength(2);
+    expect(pages()).toHaveLength(2);
   });
 });
 
 describe("withTotal", () => {
   test("por defecto pide el count exacto y lo devuelve", async () => {
     const result = await searchCatalog({ query: "tv" });
-    expect(state.selectOptions[0]).toEqual({ count: "exact" });
+    expect(counts()).toHaveLength(1);
     expect(result.total).toBe(42);
   });
 
   test("con withTotal: false no pide count y devuelve null", async () => {
     const result = await searchCatalog({ query: "tv", withTotal: false });
-    expect(state.selectOptions[0]).toBeUndefined();
+    expect(counts()).toHaveLength(0);
     expect(result.total).toBeNull();
   });
 });

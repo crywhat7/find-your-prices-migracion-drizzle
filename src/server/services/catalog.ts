@@ -1,7 +1,24 @@
 import 'server-only';
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lte, notInArray, notLike, or, sql, type SQL } from 'drizzle-orm';
+import { getDb, hasDatabaseConfig } from '@/server/db/client';
+import { rpc } from '@/server/db/rpc';
+import {
+  categories,
+  exchangeRates,
+  mvCatalog as m,
+  priceHistory,
+  storeCategories,
+  storeProducts,
+  storeProductVariants,
+  stores,
+  vCatalogBrandFacets,
+  vCatalogCanonicalCategoryFacets,
+  vCatalogStoreFacets,
+  vCatalogSummary,
+} from '@/server/db/schema';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { wordsToTsQuery } from '@/server/services/searchSynonyms';
 import type { AvailabilityStatus } from '@/server/scraping/types';
 import type { Product } from '@/types';
@@ -23,6 +40,13 @@ import {
  * Punto importante de diseño: el catálogo son miles de artículos y no se
  * mandan todos al navegador. La página sirve un primer lote curado y tanto la
  * búsqueda como los filtros se resuelven en Postgres.
+ *
+ * El esquema de Drizzle (`server/db/schema.ts`) supone la base al día, con
+ * las migraciones hasta la 0057. Las capas de compatibilidad que tenía este
+ * servicio para despliegues anteriores a una migración (leer de la vista si
+ * faltaba la materializada, dejar de pedir una columna que la vista no
+ * publicaba) se fueron con supabase-js: la base ya tiene todo eso, y la de
+ * Hetzner llega por un dump completo.
  */
 
 /** Fila cruda de la vista de listado. */
@@ -50,35 +74,6 @@ interface CatalogRow {
   rating_count: number | null;
 }
 
-const MATERIALIZED_VIEW = 'mv_catalog';
-const FALLBACK_VIEW = 'v_store_products_current';
-
-/**
- * De dónde se lee el catálogo. Arranca en la materializada; si la base no la
- * tiene todavía (el código se desplegó antes de correr 0030), baja a la vista
- * y se queda ahí hasta el próximo arranque. Mismo cuidado que con
- * `public_slug`: una migración pendiente degrada el rendimiento, no el sitio.
- */
-let catalogSource: string = MATERIALIZED_VIEW;
-
-/**
- * Si el error es "la materializada no existe", cambia la fuente y devuelve
- * `true` para que quien llama reintente. PostgREST responde PGRST205 cuando
- * no encuentra la relación en su caché de esquema; 42P01 es el mismo caso
- * visto desde Postgres.
- */
-function switchedToFallbackView(error: { code?: string; message?: string }): boolean {
-  if (catalogSource !== MATERIALIZED_VIEW) return false;
-  const message = String(error.message ?? '');
-  const missingRelation = error.code === 'PGRST205' || error.code === '42P01';
-  if (!missingRelation && !message.includes(MATERIALIZED_VIEW)) return false;
-  console.warn(
-    `[catalog] ${MATERIALIZED_VIEW} no existe todavía (${message}); se lee de ${FALLBACK_VIEW}. Correr la migración 0030.`,
-  );
-  catalogSource = FALLBACK_VIEW;
-  return true;
-}
-
 /**
  * Estados de disponibilidad que sacan un artículo del catálogo por defecto.
  *
@@ -88,7 +83,7 @@ function switchedToFallbackView(error: { code?: string; message?: string }): boo
  * de información como una respuesta negativa. En Diunsa eso solo dejaría fuera
  * miles de artículos que sí están a la venta.
  */
-const UNAVAILABLE_STATES = ['out_of_stock', 'discontinued'] as const;
+const UNAVAILABLE_STATES: AvailabilityStatus[] = ['out_of_stock', 'discontinued'];
 
 /**
  * El piso de "esto se puede comprar hoy" que se aplica salvo que alguien pida
@@ -96,102 +91,57 @@ const UNAVAILABLE_STATES = ['out_of_stock', 'discontinued'] as const;
  * negativa explícita.
  *
  * Vive en una función y no repetido en cada consulta porque lo usan el listado,
- * el conteo y el cálculo de facetas de respaldo. Si las tres no filtran igual,
- * el selector ofrece "Televisores (120)" y la búsqueda devuelve 90.
+ * el conteo y las sugerencias. Si no filtran igual, el selector ofrece
+ * "Televisores (120)" y la búsqueda devuelve 90.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function applyAvailabilityFloor(request: any): any {
-  return request
-    .gt('price', 0)
-    .not('availability', 'in', `("${UNAVAILABLE_STATES.join('","')}")`);
+function availabilityFloor(): SQL {
+  return and(gt(m.price, 0), notInArray(m.availability, UNAVAILABLE_STATES)) as SQL;
 }
-const BASE_COLUMNS =
-  'id, store_slug, store_name, name, url, primary_image_url, brand, category_raw, ' +
-  'store_category_name, currency, price, list_price, discount_percent, availability, ' +
-  'in_stock, rating_average, rating_count';
 
-/**
- * El slug de la URL pública, que agrega la migración 0021.
- *
- * Se pide aparte porque el catálogo tiene que seguir en pie si el código se
- * despliega antes de correr la migración. Sin esta separación, pedir una
- * columna que la vista todavía no publica hace fallar la consulta ENTERA —no
- * devuelve la fila sin ese campo, devuelve error 42703— y la portada, que es
- * casi todo el sitio, saldría vacía. Es el mismo cuidado que ya se tenía con
- * `first_seen_at`.
- */
-const SLUG_COLUMN = 'public_slug';
-
-/**
- * Si la vista ya publica el slug.
- *
- * Vive en el módulo y no en cada llamada a propósito: una vez comprobado que
- * la columna falta, el resto de las consultas del proceso ya no la piden y no
- * se paga un viaje fallido por visita. Vuelve a intentarlo en el siguiente
- * arranque, que es cuando puede haber cambiado.
- */
-let slugColumnPublished = true;
-
-/**
- * Nombre de la categoría canónica, que agrega la migración 0024.
- *
- * Mismo cuidado que con `public_slug`: si la vista aún no la publica, se deja
- * de pedir y el catálogo sigue mostrando la categoría de la tienda.
- */
-const CATEGORY_COLUMNS = 'category_slug, category_name';
-const CATEGORY_NAME_COLUMN = 'category_name';
-let categoryColumnsPublished = true;
-
-/**
- * Columna con la fecha en que el artículo apareció por primera vez.
- *
- * La agrega la migración 0017 a `v_store_products_current`. Antes de aplicarla
- * la vista no la expone y ordenar por ella devuelve error 42703; por eso
- * `searchCatalog` reintenta con `last_seen_at`, que está en la vista desde el
- * principio. Así "Recién agregados" degrada a "visto hace poco" en vez de
- * dejar la home en blanco mientras la migración no corre.
- */
-const NEWEST_COLUMN = 'first_seen_at';
+/** Las columnas de `mv_catalog` que pinta una tarjeta. */
+const LIST_COLUMNS = {
+  id: m.id,
+  public_slug: m.public_slug,
+  store_slug: m.store_slug,
+  store_name: m.store_name,
+  name: m.name,
+  url: m.url,
+  primary_image_url: m.primary_image_url,
+  brand: m.brand,
+  category_raw: m.category_raw,
+  store_category_name: m.store_category_name,
+  category_slug: m.category_slug,
+  category_name: m.category_name,
+  currency: m.currency,
+  price: m.price,
+  list_price: m.list_price,
+  discount_percent: m.discount_percent,
+  availability: m.availability,
+  in_stock: m.in_stock,
+  rating_average: m.rating_average,
+  rating_count: m.rating_count,
+};
 
 /**
  * Precio de referencia en lempiras (migración 0054). El catálogo es
  * multimoneda —Eneba publica en dólares— y ordenar o filtrar por `price`
  * mezclaría L 300 con US$ 15. La tarjeta sigue mostrando `price` en su
  * moneda; esto solo decide el orden y el filtro de precio.
- *
- * Mismo cuidado que con `public_slug`: si la vista aún no la publica, se
- * vuelve a `price` y el catálogo sigue en pie.
  */
-const REFERENCE_PRICE_COLUMN = 'price_hnl';
-let referencePricePublished = true;
-
-function priceColumn(): string {
-  return referencePricePublished ? REFERENCE_PRICE_COLUMN : 'price';
-}
+const REFERENCE_PRICE = m.price_hnl;
 
 /**
- * Si el artículo suele servir en Honduras (migración 0056): 0 sin región,
- * GLOBAL, LATAM o UNITED STATES; 1 cualquier otra región. Eneba vende la
- * misma clave por región y la de Brasil o Turquía, que casi nunca se puede
- * canjear acá, suele ser la más barata: sin esto, buscar "vbucks" las ponía
- * arriba. Mismo cuidado que con `price_hnl` si la vista aún no la publica.
- */
-const REGION_RANK_COLUMN = 'region_rank';
-let regionRankPublished = true;
-
-/**
- * Lo destacado a mano (migración 0057): se ordena justo después de la región.
- * El CSV de Eneba no trae descuento ni ventas, y sin esto el desempate era el
- * slug —orden alfabético—, con miles de vouchers cripto delante de Steam Wallet
- * o Roblox. La lista vive en `catalog_featured_terms`, no acá. Mismo cuidado
- * que con `region_rank` si la vista aún no la publica.
- */
-const FEATURED_RANK_COLUMN = 'featured_rank';
-let featuredRankPublished = true;
-
-/**
- * Órdenes que respetan el nivel de región antes que su propia clave. Los de
+ * Órdenes que respetan el nivel de región (`region_rank`, 0056) y lo
+ * destacado a mano (`featured_rank`, 0057) antes que su propia clave. Los de
  * precio y nombre no: quien pide "menor precio" ve lo más barato.
+ *
+ * `region_rank`: 0 sin región, GLOBAL, LATAM o UNITED STATES; 1 cualquier otra.
+ * Eneba vende la misma clave por región y la de Brasil o Turquía, que casi
+ * nunca se puede canjear acá, suele ser la más barata.
+ *
+ * `featured_rank`: el CSV de Eneba no trae descuento ni ventas, y sin esto el
+ * desempate era el slug —orden alfabético—. La lista vive en
+ * `catalog_featured_terms`, no acá.
  */
 const REGION_FIRST_SORTS: ReadonlySet<CatalogSort> = new Set(['relevance', 'newest', 'discount', 'rating']);
 
@@ -266,11 +216,11 @@ function toProduct(row: CatalogRow, locale: CatalogLocale): Product {
  * página conserva su última copia buena.
  */
 export function hasDatabase(): boolean {
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL) return true;
+  if (hasDatabaseConfig()) return true;
   if (process.env.NODE_ENV === 'production') {
     throw new Error(
-      'Falta NEXT_PUBLIC_SUPABASE_URL en un build de producción: sin base, las páginas saldrían vacías y quedarían en caché. ' +
-        'En Cloudflare va en Settings → Build → Variables, no solo en las variables del Worker.',
+      'Falta DATABASE_URL en un build de producción: sin base, las páginas saldrían vacías y quedarían en caché. ' +
+        'En Cloudflare va en Settings → Build → Variables; en el Worker ya en marcha la conexión sale de Hyperdrive.',
     );
   }
   return false;
@@ -278,7 +228,7 @@ export function hasDatabase(): boolean {
 
 /**
  * Reintenta una lectura que falló por algo pasajero: red caída un instante,
- * un 5xx de PostgREST, el arranque en frío del pooler. Tres intentos con
+ * una conexión que el pooler cortó, el arranque en frío de Hyperdrive. Tres intentos con
  * espera creciente cubren casi todo eso sin sumar más de un segundo.
  *
  * POR QUÉ EXISTE. Estas lecturas alimentan páginas con `revalidate`. Si la
@@ -353,27 +303,30 @@ const EMPTY_FACETS: CatalogFacets = {
 export async function getCatalogFacets(): Promise<CatalogFacets> {
   if (!hasDatabase()) return EMPTY_FACETS;
   return withRetry('facetas del catálogo', async () => {
-    const db = getSupabaseAdmin();
+    const db = getDb();
 
-    const [categories, stores, brands, summary] = await Promise.all([
+    const [categoryRows, storeRows, brandRows, [totals]] = await Promise.all([
       db
-        .from('v_catalog_canonical_category_facets')
-        .select('slug, name, parent_slug, parent_name, product_count'),
-      db.from('v_catalog_store_facets').select('store_name, product_count'),
+        .select({
+          slug: vCatalogCanonicalCategoryFacets.slug,
+          name: vCatalogCanonicalCategoryFacets.name,
+          parent_slug: vCatalogCanonicalCategoryFacets.parent_slug,
+          parent_name: vCatalogCanonicalCategoryFacets.parent_name,
+          product_count: vCatalogCanonicalCategoryFacets.product_count,
+        })
+        .from(vCatalogCanonicalCategoryFacets),
       db
-        .from('v_catalog_brand_facets')
-        .select('brand_name, product_count')
-        .order('product_count', { ascending: false })
-        .limit(300),
-      db.from('v_catalog_summary').select('*').single(),
+        .select({ store_name: vCatalogStoreFacets.store_name, product_count: vCatalogStoreFacets.product_count })
+        .from(vCatalogStoreFacets),
+      db
+        .select({ brand_name: vCatalogBrandFacets.brand_name, product_count: vCatalogBrandFacets.product_count })
+        .from(vCatalogBrandFacets)
+        .orderBy(desc(vCatalogBrandFacets.product_count))
+        .limit(300)
+        // Las marcas son un extra del filtro: sin ellas el catálogo sigue.
+        .catch(() => []),
+      db.select().from(vCatalogSummary),
     ]);
-
-    // Si las vistas de faceta no existen todavía (migración 0013 sin aplicar),
-    // se calcula igual, aunque más lento. Nunca se cae al árbol de la tienda:
-    // ese era justamente el bug.
-    if (categories.error || stores.error || summary.error) {
-      return await computeFacetsByScan();
-    }
 
     const toOptions = (rows: unknown[], key: string): FacetOption[] =>
       (rows as Record<string, unknown>[])
@@ -381,106 +334,18 @@ export async function getCatalogFacets(): Promise<CatalogFacets> {
         .filter((option) => option.value !== '' && option.count > 0)
         .sort((a, b) => b.count - a.count);
 
-    const totals = summary.data as Record<string, number>;
-
     return {
-      categories: buildCategoryTree(toCategoryRows(categories.data ?? [])),
-      stores: toOptions(stores.data ?? [], 'store_name'),
-      brands: brands.error ? [] : toOptions(brands.data ?? [], 'brand_name'),
-      minPrice: Number(totals.min_price ?? 0),
-      maxPrice: Number(totals.max_price ?? 0),
-      totalProducts: Number(totals.total_products ?? 0),
-      totalStores: Number(totals.total_stores ?? 0),
-      totalCategories: Number(totals.total_categories ?? 0),
-      discountedProducts: Number(totals.discounted_products ?? 0),
+      categories: buildCategoryTree(toCategoryRows(categoryRows)),
+      stores: toOptions(storeRows, 'store_name'),
+      brands: toOptions(brandRows, 'brand_name'),
+      minPrice: Number(totals?.min_price ?? 0),
+      maxPrice: Number(totals?.max_price ?? 0),
+      totalProducts: Number(totals?.total_products ?? 0),
+      totalStores: Number(totals?.total_stores ?? 0),
+      totalCategories: Number(totals?.total_categories ?? 0),
+      discountedProducts: Number(totals?.discounted_products ?? 0),
     };
   });
-}
-
-/**
- * Cálculo de facetas sin las vistas de la migración 0013.
- *
- * PostgREST devuelve como mucho 1000 filas por petición, así que se recorre por
- * páginas pidiendo solo las columnas necesarias. Es correcto pero cuesta varios
- * viajes; con la migración aplicada este camino no se usa. Solo corre durante
- * la revalidación de la página (cada 5 minutos), nunca por visitante.
- */
-async function computeFacetsByScan(): Promise<CatalogFacets> {
-  const db = getSupabaseAdmin();
-  const PAGE = 1000;
-  const MAX_PAGES = 40; // tope de seguridad: 40 000 artículos
-
-  const categoryCounts = new Map<string, CanonicalCategoryFacetRow>();
-  const storeCounts = new Map<string, number>();
-  const brandCounts = new Map<string, number>();
-  let min = Number.POSITIVE_INFINITY;
-  let max = 0;
-  let total = 0;
-  let discounted = 0;
-
-  for (let page = 0; page < MAX_PAGES; page += 1) {
-    // Mismo piso de disponibilidad que el listado: estas cuentas alimentan los
-    // selectores, y un selector que promete más de lo que la búsqueda devuelve
-    // parece un fallo del sitio, no un filtro.
-    const { data, error } = await applyAvailabilityFloor(
-      db
-        .from(catalogSource)
-        .select(
-          'category_slug, category_name, category_root_slug, category_root_name, store_name, brand, price, list_price',
-        )
-        .not('price', 'is', null),
-    ).range(page * PAGE, page * PAGE + PAGE - 1);
-
-    if (error) {
-      // Sin la materializada, la misma página se vuelve a pedir a la vista.
-      if (switchedToFallbackView(error)) {
-        page -= 1;
-        continue;
-      }
-      throw new Error(error.message);
-    }
-    const rows = (data ?? []) as Array<Record<string, unknown>>;
-    if (rows.length === 0) break;
-
-    for (const row of rows) {
-      total += 1;
-      const price = Number(row.price);
-      if (Number.isFinite(price)) {
-        if (price < min) min = price;
-        if (price > max) max = price;
-      }
-      if (row.list_price !== null) discounted += 1;
-
-      const bump = (map: Map<string, number>, value: unknown) => {
-        const key = typeof value === 'string' ? value.trim() : '';
-        if (key) map.set(key, (map.get(key) ?? 0) + 1);
-      };
-      bumpCategory(categoryCounts, row);
-      bump(storeCounts, row.store_name);
-      bump(brandCounts, row.brand);
-    }
-
-    if (rows.length < PAGE) break;
-  }
-
-  const toOptions = (map: Map<string, number>, minCount = 1): FacetOption[] =>
-    [...map.entries()]
-      .filter(([, count]) => count >= minCount)
-      .map(([value, count]) => ({ value, count }))
-      .sort((a, b) => b.count - a.count);
-
-  const categories = buildCategoryTree([...categoryCounts.values()]);
-  return {
-    categories,
-    stores: toOptions(storeCounts),
-    brands: toOptions(brandCounts, 2).slice(0, 300),
-    minPrice: Number.isFinite(min) ? min : 0,
-    maxPrice: max,
-    totalProducts: total,
-    totalStores: storeCounts.size,
-    totalCategories: categories.filter((option) => option.value !== UNCATEGORIZED_VALUE).length,
-    discountedProducts: discounted,
-  };
 }
 
 /** Filas de `v_catalog_canonical_category_facets` con tipos ya fijados. */
@@ -492,32 +357,6 @@ function toCategoryRows(rows: unknown[]): CanonicalCategoryFacetRow[] {
     parentName: (row.parent_name as string | null) ?? null,
     count: Number(row.product_count ?? 0),
   }));
-}
-
-/**
- * Acumula un artículo en su nodo canónico, para el camino sin vistas.
- *
- * La vista trae la raíz ya resuelta (`category_root_*`); acá se traduce a la
- * forma padre/hija que espera `buildCategoryTree`: si la raíz es el mismo
- * nodo, no hay padre.
- */
-function bumpCategory(map: Map<string, CanonicalCategoryFacetRow>, row: Record<string, unknown>) {
-  const slug = typeof row.category_slug === 'string' ? row.category_slug : null;
-  const rootSlug = typeof row.category_root_slug === 'string' ? row.category_root_slug : null;
-  const key = slug ?? '';
-  const current = map.get(key);
-  if (current) {
-    current.count += 1;
-    return;
-  }
-  const isChild = slug !== null && rootSlug !== null && rootSlug !== slug;
-  map.set(key, {
-    slug,
-    name: typeof row.category_name === 'string' ? row.category_name : null,
-    parentSlug: isChild ? rootSlug : null,
-    parentName: isChild && typeof row.category_root_name === 'string' ? row.category_root_name : null,
-    count: 1,
-  });
 }
 
 // -----------------------------------------------------------------------------
@@ -658,8 +497,8 @@ async function findSpellingCorrection(query: string): Promise<string | undefined
   const needle = normalizeText(query);
   if (needle.length < 3) return undefined;
   try {
-    const { data, error } = await getSupabaseAdmin().rpc('suggest_search_query', { p_query: needle });
-    if (error || typeof data !== 'string' || !data.trim() || data === needle) return undefined;
+    const data = await rpc<string | null>('suggest_search_query', { p_query: needle });
+    if (typeof data !== 'string' || !data.trim() || data === needle) return undefined;
     return data;
   } catch {
     return undefined;
@@ -749,39 +588,25 @@ export function normalizeSearchParams(params: SearchCatalogParams): NormalizedSe
 }
 
 async function searchCatalogOnce(params: SearchCatalogParams): Promise<SearchCatalogResult> {
-  // Hasta ocho pasadas: la buena, una si falta la materializada, y una por
-  // cada columna que la vista pueda no tener todavía. Cada reintento apaga
-  // exactamente lo que faltó, así que el catálogo degrada por partes —sin
-  // materializada, sin orden por novedad, sin enlace a la ficha, o sin
-  // categoría canónica— en vez de caerse entero.
-  let newestColumn = NEWEST_COLUMN;
+  return runCatalogQuery(params);
+}
 
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const flags = () =>
-      `${catalogSource}${slugColumnPublished}${categoryColumnsPublished}${referencePricePublished}${regionRankPublished}${featuredRankPublished}`;
-    const published = flags();
-    const result = await runCatalogQuery(params, newestColumn);
-    if (result !== null) return result;
-
-    // `null` significa "falta algo". Qué, lo dice la bandera que la propia
-    // consulta acaba de cambiar; si ninguna cambió, fue la columna de novedad.
-    if (published !== flags()) continue;
-    newestColumn = 'last_seen_at';
-  }
-
-  throw new Error('La vista del catálogo no publica las columnas que la consulta necesita');
+function asList(value: string | string[] | undefined): string[] {
+  return (Array.isArray(value) ? value : value ? [value] : []).filter(Boolean);
 }
 
 /**
- * Filtra una columna por uno o varios valores. Con uno usa `eq`, con varios
- * `in`; sin ninguno deja la consulta como estaba.
+ * Filtra una columna por uno o varios valores. Con uno usa `=`, con varios
+ * `in`; sin ninguno no filtra.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function applyFacet(request: any, column: string, value: string | string[] | undefined): any {
-  const values = (Array.isArray(value) ? value : value ? [value] : []).filter(Boolean);
-  if (values.length === 0) return request;
-  if (values.length === 1) return request.eq(column, values[0]);
-  return request.in(column, values);
+function facetFilter(
+  column: typeof m.store_name | typeof m.store_slug | typeof m.store_category_name | typeof m.brand,
+  value: string | string[] | undefined,
+): SQL | undefined {
+  const values = asList(value);
+  if (values.length === 0) return undefined;
+  if (values.length === 1) return eq(column, values[0]);
+  return inArray(column, values);
 }
 
 /**
@@ -792,25 +617,36 @@ function applyFacet(request: any, column: string, value: string | string[] | und
  * "Juguetería y Juegos" trae también "Muñecas, Figuras y Vehículos" sin que
  * el cliente tenga que conocer el árbol. `UNCATEGORIZED_VALUE` es
  * `category_slug is null`: lo que aún no se mapeó.
- *
- * Se arma como una sola cláusula `or` de PostgREST; los slugs van entre
- * comillas por si alguno trajera coma.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function applyCategoryFacet(request: any, value: string | string[] | undefined): any {
-  const values = (Array.isArray(value) ? value : value ? [value] : []).filter(Boolean);
-  if (values.length === 0) return request;
+function categoryFilter(value: string | string[] | undefined): SQL | undefined {
+  const values = asList(value);
+  if (values.length === 0) return undefined;
 
   const slugs = values.filter((item) => item !== UNCATEGORIZED_VALUE);
-  const clauses: string[] = [];
-  if (slugs.length > 0) {
-    const list = `(${slugs.map((slug) => `"${slug.replace(/"/g, '')}"`).join(',')})`;
-    clauses.push(`category_slug.in.${list}`, `category_root_slug.in.${list}`);
-  }
-  if (slugs.length < values.length) clauses.push('category_slug.is.null');
-  return request.or(clauses.join(','));
+  const clauses: SQL[] = [];
+  if (slugs.length > 0) clauses.push(inArray(m.category_slug, slugs), inArray(m.category_root_slug, slugs));
+  if (slugs.length < values.length) clauses.push(isNull(m.category_slug));
+  return or(...clauses);
 }
 
+/**
+ * Full-text sobre `normalized_name` (ver 0026): cada palabra como prefijo y
+ * todas obligatorias, en cualquier orden. "play 5" → 'play:* & 5:*'. La
+ * expresión es la misma del índice `mv_catalog_name_fts_idx`, que es lo que
+ * deja que Postgres lo use.
+ */
+function textSearch(tsquery: string): SQL {
+  return sql`to_tsvector('simple', ${m.normalized_name}) @@ to_tsquery('simple', ${tsquery})`;
+}
+
+/** Orden descendente con los nulos al final, como `nullsFirst: false` de PostgREST. */
+function descNullsLast(column: AnyPgColumn): SQL {
+  return sql`${column} desc nulls last`;
+}
+
+function ascNullsLast(column: AnyPgColumn): SQL {
+  return sql`${column} asc nulls last`;
+}
 /**
  * Convierte lo que escribió el visitante en un tsquery de prefijos con AND:
  * "Play 5" → "play:* & 5:*". Se normaliza igual que `normalize_text` en la
@@ -855,9 +691,7 @@ interface QueryLayer {
 }
 
 /**
- * Una pasada de la consulta. Devuelve `null` —y solo `null`— cuando falta una
- * columna que la vista no publica todavía, que es la única condición que vale
- * la pena reintentar.
+ * Una pasada de la consulta.
  *
  * Con texto y orden por defecto, la búsqueda va en dos capas: primero los
  * artículos cuyo nombre EMPIEZA por lo escrito, después los que lo tienen en
@@ -869,41 +703,26 @@ interface QueryLayer {
  * página siguiente arranca donde terminó, así que ningún artículo se repite
  * ni se salta.
  */
-async function runCatalogQuery(
-  params: SearchCatalogParams,
-  newestColumn: string,
-): Promise<SearchCatalogResult | null> {
+async function runCatalogQuery(params: SearchCatalogParams): Promise<SearchCatalogResult> {
   const limit = Math.min(params.limit ?? 60, 200);
   const offset = Math.max(params.offset ?? 0, 0);
   const locale = params.locale ?? 'es';
   const withTotal = params.withTotal !== false;
-
-  // El encadenado condicional de filtros sobre el builder tipado de
-  // supabase-js dispara "Type instantiation is excessively deep": cada
-  // .eq()/.gte() reescribe el tipo del resultado. Se afloja el tipo del
-  // builder a propósito; la forma real de las filas se fija abajo, al
-  // mapearlas a CatalogRow.
-  const columns = [
-    BASE_COLUMNS,
-    slugColumnPublished ? SLUG_COLUMN : null,
-    categoryColumnsPublished ? CATEGORY_COLUMNS : null,
-  ]
-    .filter(Boolean)
-    .join(', ');
+  const sort = params.sort ?? 'discount';
 
   const tsquery = toPrefixTsQuery(params.query);
   const prefix = toNamePrefix(params.query);
   const layered =
     tsquery !== null &&
     prefix !== null &&
-    PREFIX_FIRST_SORTS.has(params.sort ?? 'discount') &&
+    PREFIX_FIRST_SORTS.has(sort) &&
     !(params.ids && params.ids.length > 0);
 
   // Con un orden que respeta la región, cada capa de texto se parte en dos
   // —región que sirve en Honduras y las demás— y las cuatro van en fila:
   // sin esto, una clave de Turquía que EMPIEZA por "xbox" saldría antes que
   // una GLOBAL que lo trae en medio del nombre.
-  const regionFirst = regionRankPublished && REGION_FIRST_SORTS.has(params.sort ?? 'discount');
+  const regionFirst = REGION_FIRST_SORTS.has(sort);
   const layers: QueryLayer[] = regionFirst
     ? [
         { text: 'prefix', region: 'primary' },
@@ -913,169 +732,106 @@ async function runCatalogQuery(
       ]
     : [{ text: 'prefix' }, { text: 'rest' }];
 
-  /**
-   * La consulta con todos los filtros y el orden puestos. `layer` acota a una
-   * capa; sin `text` es la lista entera. Con `head` sólo se pide la cuenta,
-   * sin filas ni orden.
-   */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const build = (layer: QueryLayer, count: boolean, head = false): any => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let request: any = getSupabaseAdmin()
-      .from(catalogSource)
-      .select(head ? 'id' : columns, count ? (head ? { count: 'exact', head } : { count: 'exact' }) : undefined)
-      .not('price', 'is', null);
-
-    if (tsquery) {
-      // Full-text sobre normalized_name (ver 0026): cada palabra como prefijo
-      // y todas obligatorias, en cualquier orden. "play 5" → 'play:* & 5:*'.
-      request = request.textSearch('normalized_name', tsquery, { config: 'simple' });
-    }
+  /** Todos los filtros, acotados a una capa; sin `text` es la lista entera. */
+  const where = (layer: QueryLayer): SQL | undefined => {
+    const filters: Array<SQL | undefined> = [isNotNull(m.price)];
+    if (tsquery) filters.push(textSearch(tsquery));
     // El prefijo sólo tiene [a-z0-9 ], así que no hay comodines que escapar.
-    if (layer.text === 'prefix') request = request.like('normalized_name', `${prefix}%`);
-    if (layer.text === 'rest') request = request.not('normalized_name', 'like', `${prefix}%`);
-    if (layer.region === 'primary') request = request.eq(REGION_RANK_COLUMN, 0);
-    if (layer.region === 'other') request = request.gt(REGION_RANK_COLUMN, 0);
+    if (layer.text === 'prefix') filters.push(like(m.normalized_name, `${prefix}%`));
+    if (layer.text === 'rest') filters.push(notLike(m.normalized_name, `${prefix}%`));
+    if (layer.region === 'primary') filters.push(eq(m.region_rank, 0));
+    if (layer.region === 'other') filters.push(gt(m.region_rank, 0));
 
-    if (params.ids && params.ids.length > 0) request = request.in('id', params.ids);
-    request = applyFacet(request, 'store_name', params.store);
-    request = applyFacet(request, 'store_slug', params.storeSlug);
-    request = applyCategoryFacet(request, params.category);
-    request = applyFacet(request, 'store_category_name', params.storeCategory);
-    request = applyFacet(request, 'brand', params.brand);
-    if (params.minPrice !== undefined) request = request.gte(priceColumn(), params.minPrice);
-    if (params.maxPrice !== undefined) request = request.lte(priceColumn(), params.maxPrice);
-    if (params.onlyDiscounted) request = request.not('list_price', 'is', null);
-    if (!params.includeUnavailable) request = applyAvailabilityFloor(request);
-    if (head) return request;
+    if (params.ids && params.ids.length > 0) filters.push(inArray(m.id, params.ids));
+    filters.push(facetFilter(m.store_name, params.store));
+    filters.push(facetFilter(m.store_slug, params.storeSlug));
+    filters.push(categoryFilter(params.category));
+    filters.push(facetFilter(m.store_category_name, params.storeCategory));
+    filters.push(facetFilter(m.brand, params.brand));
+    if (params.minPrice !== undefined) filters.push(gte(REFERENCE_PRICE, params.minPrice));
+    if (params.maxPrice !== undefined) filters.push(lte(REFERENCE_PRICE, params.maxPrice));
+    if (params.onlyDiscounted) filters.push(isNotNull(m.list_price));
+    if (!params.includeUnavailable) filters.push(availabilityFloor());
+    return and(...filters);
+  };
 
-    if (regionRankPublished && REGION_FIRST_SORTS.has(params.sort ?? 'discount')) {
-      request = request.order(REGION_RANK_COLUMN, { ascending: true });
-      if (featuredRankPublished) request = request.order(FEATURED_RANK_COLUMN, { ascending: true });
-    }
+  const orderBy = (): SQL[] => {
+    const keys: SQL[] = [];
+    if (regionFirst) keys.push(asc(m.region_rank), asc(m.featured_rank));
 
-    switch (params.sort) {
-      // Lo más nuevo primero. `nullsFirst: false` deja al final lo que no tiene
-      // fecha: un artículo sin registrar no es un artículo antiquísimo.
+    switch (sort) {
+      // Lo más nuevo primero, con lo que no tiene fecha al final: un artículo
+      // sin registrar no es un artículo antiquísimo.
       case 'newest':
-        request = request.order(newestColumn, { ascending: false, nullsFirst: false });
+        keys.push(descNullsLast(m.first_seen_at));
         break;
       case 'price-asc':
         // Sin tasa para su moneda, price_hnl es null: al final, en los dos sentidos.
-        request = request.order(priceColumn(), { ascending: true, nullsFirst: false });
+        keys.push(ascNullsLast(REFERENCE_PRICE));
         break;
       case 'price-desc':
-        request = request.order(priceColumn(), { ascending: false, nullsFirst: false });
+        keys.push(descNullsLast(REFERENCE_PRICE));
         break;
       case 'name-asc':
-        request = request.order('name', { ascending: true });
+        keys.push(asc(m.name));
         break;
       case 'rating':
-        request = request.order('rating_average', { ascending: false, nullsFirst: false });
+        keys.push(descNullsLast(m.rating_average));
         break;
       case 'discount':
       default:
-        request = request.order('discount_percent', { ascending: false, nullsFirst: false });
+        keys.push(descNullsLast(m.discount_percent));
     }
 
     // Desempate estable: sin una segunda clave, dos páginas consecutivas pueden
     // repetir o saltarse artículos con el mismo descuento.
-    return request.order('id', { ascending: true });
+    keys.push(asc(m.id));
+    return keys;
   };
 
-  /**
-   * Ejecuta y traduce el error. `null` es "falta una columna, reintentar";
-   * cualquier otro fallo se lanza.
-   */
-  const execute = async (
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    request: any,
-  ): Promise<{ rows: CatalogRow[]; count: number | null } | null> => {
-    const { data, error, count } = await request;
-    if (!error) {
-      return { rows: (data ?? []) as unknown as CatalogRow[], count: count ?? null };
-    }
-
-    // La materializada aún no existe: se reintenta contra la vista.
-    if (switchedToFallbackView(error)) return null;
-
-    // 42703 = undefined_column en Postgres. Es lo que responde PostgREST
-    // cuando se pide o se ordena por una columna que la vista no publica.
-    const message = String(error.message);
-    const undefinedColumn = error.code === '42703';
-
-    // El mensaje de PostgREST nombra la columna que falta
-    // ("column ... public_slug does not exist"), que es lo que permite saber
-    // cuál de las dos apagar.
-    if (slugColumnPublished && message.includes(SLUG_COLUMN)) {
-      slugColumnPublished = false;
-      return null;
-    }
-    if (categoryColumnsPublished && message.includes(CATEGORY_NAME_COLUMN)) {
-      categoryColumnsPublished = false;
-      return null;
-    }
-    if (referencePricePublished && message.includes(REFERENCE_PRICE_COLUMN)) {
-      referencePricePublished = false;
-      return null;
-    }
-    if (regionRankPublished && message.includes(REGION_RANK_COLUMN)) {
-      regionRankPublished = false;
-      return null;
-    }
-    if (featuredRankPublished && message.includes(FEATURED_RANK_COLUMN)) {
-      featuredRankPublished = false;
-      return null;
-    }
-
-    const missingNewest = undefinedColumn || message.includes(newestColumn);
-    if (missingNewest && params.sort === 'newest') return null;
-    throw new Error(error.message);
+  const db = getDb();
+  const page = (layer: QueryLayer, from: number, size: number) =>
+    db
+      .select(LIST_COLUMNS)
+      .from(m)
+      .where(where(layer))
+      .orderBy(...orderBy())
+      .limit(size)
+      .offset(from) as Promise<CatalogRow[]>;
+  const countOf = async (layer: QueryLayer): Promise<number> => {
+    const [row] = await db.select({ n: count() }).from(m).where(where(layer));
+    return row?.n ?? 0;
   };
 
-  try {
-    if (!layered) {
-      const result = await execute(build({}, withTotal).range(offset, offset + limit - 1));
-      if (result === null) return null;
-      return {
-        products: result.rows.map((row) => toProduct(row, locale)),
-        total: withTotal ? (result.count ?? 0) : null,
-      };
-    }
-
-    // Las capas se recorren en fila como una sola lista. De cada una se pide a
-    // la vez la página que le toca y su cuenta: la cuenta es lo que dice
-    // cuántos artículos hay que saltar en la siguiente. Llena la página, las
-    // que quedan sólo se cuentan (y sólo si hace falta el total).
-    const rows: CatalogRow[] = [];
-    let total = 0;
-    let skip = offset;
-
-    for (const layer of layers) {
-      const missing = limit - rows.length;
-      if (missing > 0) {
-        const result = await execute(build(layer, true).range(skip, skip + missing - 1));
-        if (result === null) return null;
-        rows.push(...result.rows);
-        const layerCount = result.count ?? 0;
-        total += layerCount;
-        skip = Math.max(skip - layerCount, 0);
-      } else if (withTotal) {
-        const tail = await execute(build(layer, true, true));
-        if (tail === null) return null;
-        total += tail.count ?? 0;
-      }
-    }
-
-    return {
-      products: rows.map((row) => toProduct(row, locale)),
-      total: withTotal ? total : null,
-    };
-  } catch (error) {
-    // Antes esto devolvía un catálogo vacío. Ver `withRetry` para por qué
-    // eso era peor que fallar.
-    throw error instanceof Error ? error : new Error(String(error));
+  if (!layered) {
+    const [rows, total] = await Promise.all([page({}, offset, limit), withTotal ? countOf({}) : null]);
+    return { products: rows.map((row) => toProduct(row, locale)), total };
   }
+
+  // Las capas se recorren en fila como una sola lista. De cada una se pide a
+  // la vez la página que le toca y su cuenta: la cuenta es lo que dice
+  // cuántos artículos hay que saltar en la siguiente. Llena la página, las
+  // que quedan sólo se cuentan (y sólo si hace falta el total).
+  const rows: CatalogRow[] = [];
+  let total = 0;
+  let skip = offset;
+
+  for (const layer of layers) {
+    const missing = limit - rows.length;
+    if (missing > 0) {
+      const [layerRows, layerCount] = await Promise.all([page(layer, skip, missing), countOf(layer)]);
+      rows.push(...layerRows);
+      total += layerCount;
+      skip = Math.max(skip - layerCount, 0);
+    } else if (withTotal) {
+      total += await countOf(layer);
+    }
+  }
+
+  return {
+    products: rows.map((row) => toProduct(row, locale)),
+    total: withTotal ? total : null,
+  };
 }
 
 export interface CatalogSnapshot {
@@ -1220,23 +976,14 @@ async function suggestItems(needle: string): Promise<{ name: string }[]> {
   const tsquery = toPrefixTsQuery(needle);
   if (!tsquery) return [];
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const request: any = applyAvailabilityFloor(
-    getSupabaseAdmin()
-      .from(catalogSource)
-      .select('name')
-      .not('price', 'is', null)
-      .textSearch('normalized_name', tsquery, { config: 'simple' }),
-  ).limit(SUGGESTION_LIMITS.items * 15);
-
-  const { data, error } = await request;
-  if (error) {
-    if (switchedToFallbackView(error)) return suggestItems(needle);
-    throw new Error(error.message);
-  }
+  const data = await getDb()
+    .select({ name: m.name })
+    .from(m)
+    .where(and(isNotNull(m.price), textSearch(tsquery), availabilityFloor()))
+    .limit(SUGGESTION_LIMITS.items * 15);
 
   const candidates = new Map<string, { name: string; position: number }>();
-  for (const row of (data ?? []) as { name: string }[]) {
+  for (const row of data) {
     const key = normalizeText(row.name);
     if (!key || candidates.has(key)) continue;
     const at = key.indexOf(needle);
@@ -1345,24 +1092,59 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * Las columnas de `store_products` que la ficha usa, y ninguna más.
  *
  * Con `*` venían también `raw`, `shipping_info`, `location_availability` y
- * otra treintena de campos que nadie pinta: JSON de más que viaja desde
- * Supabase y que el Worker tiene que parsear. Una columna nueva en la ficha
- * se agrega acá. Es un literal y no un `join`: los tipos de supabase-js leen
- * el texto del `select` y con un `string` cualquiera dan error.
+ * otra treintena de campos que nadie pinta: datos de más que viajan desde la
+ * base y que el Worker tiene que parsear. Una columna nueva en la ficha se
+ * agrega acá.
  */
-const PRODUCT_DETAIL_SELECT = `
-  id, public_slug, external_id, name, description, url,
-  price, currency, list_price, discount_percent, discount_amount, member_price,
-  availability, in_stock, stock_quantity, min_order_quantity,
-  category_raw, category_path, brand_raw, primary_image_url, images,
-  rating_average, rating_count,
-  sku, gtin, barcode_raw, model, color, size, condition,
-  unit_measure_name, tax_rate, tax_included, warranty_months, weight_grams,
-  specs, attributes, badges,
-  first_seen_at, last_seen_at, last_price_change_at,
-  stores!inner(name, slug, logo_url, is_active),
-  store_categories(name, categories(slug, name)),
-  store_product_variants(external_id, name, color, size, price, list_price, in_stock)`;
+const sp = storeProducts;
+const PRODUCT_DETAIL_COLUMNS = {
+  id: sp.id,
+  public_slug: sp.public_slug,
+  external_id: sp.external_id,
+  name: sp.name,
+  description: sp.description,
+  url: sp.url,
+  price: sp.price,
+  currency: sp.currency,
+  list_price: sp.list_price,
+  discount_percent: sp.discount_percent,
+  discount_amount: sp.discount_amount,
+  member_price: sp.member_price,
+  availability: sp.availability,
+  in_stock: sp.in_stock,
+  stock_quantity: sp.stock_quantity,
+  min_order_quantity: sp.min_order_quantity,
+  category_raw: sp.category_raw,
+  category_path: sp.category_path,
+  brand_raw: sp.brand_raw,
+  primary_image_url: sp.primary_image_url,
+  images: sp.images,
+  rating_average: sp.rating_average,
+  rating_count: sp.rating_count,
+  sku: sp.sku,
+  gtin: sp.gtin,
+  barcode_raw: sp.barcode_raw,
+  model: sp.model,
+  color: sp.color,
+  size: sp.size,
+  condition: sp.condition,
+  unit_measure_name: sp.unit_measure_name,
+  tax_rate: sp.tax_rate,
+  tax_included: sp.tax_included,
+  warranty_months: sp.warranty_months,
+  weight_grams: sp.weight_grams,
+  specs: sp.specs,
+  attributes: sp.attributes,
+  badges: sp.badges,
+  first_seen_at: sp.first_seen_at,
+  last_seen_at: sp.last_seen_at,
+  last_price_change_at: sp.last_price_change_at,
+  store_name: stores.name,
+  store_slug: stores.slug,
+  store_category_name: storeCategories.name,
+  category_slug: categories.slug,
+  category_name: categories.name,
+};
 
 /**
  * Ficha completa. Devuelve `null` si el artículo no existe o dejó de estar
@@ -1387,44 +1169,61 @@ export const getProductDetail = cache(async (
   // `revalidate` queda cacheado diez minutos. Un fallo de red NO es un 404:
   // se propaga para que la ficha conserve su última versión buena.
   return withRetry('ficha de producto', async () => {
-    const db = getSupabaseAdmin();
+    const db = getDb();
 
-    const { data, error } = await db
-      .from('store_products')
-      .select(PRODUCT_DETAIL_SELECT)
-      .eq(UUID_PATTERN.test(key) ? 'id' : 'public_slug', key)
-      .eq('is_active', true)
-      .maybeSingle();
+    const [found] = await db
+      .select(PRODUCT_DETAIL_COLUMNS)
+      .from(sp)
+      .innerJoin(stores, eq(stores.id, sp.store_id))
+      .leftJoin(storeCategories, eq(storeCategories.id, sp.store_category_id))
+      .leftJoin(categories, eq(categories.id, storeCategories.category_id))
+      .where(and(eq(UUID_PATTERN.test(key) ? sp.id : sp.public_slug, key), eq(sp.is_active, true)))
+      .limit(1);
 
-    if (error) throw new Error(error.message);
-    if (!data) return null;
+    if (!found) return null;
+    const row = found as Record<string, unknown>;
+    const store = { name: found.store_name, slug: found.store_slug };
 
-    const row = data as Record<string, unknown>;
-    const store = row.stores as { name: string; slug: string } | null;
-    if (!store) return null;
-
-    // El histórico se pide aparte: es una serie que puede ser larga y no tiene
-    // sentido arrastrarla en el mismo join. Va en paralelo con la tasa de
-    // cambio: ninguna depende de la otra.
+    // El histórico y las variantes se piden aparte: son series que pueden ser
+    // largas y no tiene sentido multiplicarlas en el mismo join. Van en
+    // paralelo con la tasa de cambio: ninguna depende de la otra.
     const currency = String(row.currency ?? 'HNL');
     const needsRate = currency !== 'HNL' && row.price !== null && row.price !== undefined;
-    const [
-      { data: history, error: historyError },
-      rateResult,
-    ] = await Promise.all([
+    const [history, variantRows, rateRows] = await Promise.all([
       db
-        .from('price_history')
-        .select('scraped_at, price, list_price, previous_price, price_delta, in_stock')
-        .eq('store_product_id', String(row.id))
-        .order('scraped_at', { ascending: true })
+        .select({
+          scraped_at: priceHistory.scraped_at,
+          price: priceHistory.price,
+          list_price: priceHistory.list_price,
+          previous_price: priceHistory.previous_price,
+          price_delta: priceHistory.price_delta,
+          in_stock: priceHistory.in_stock,
+        })
+        .from(priceHistory)
+        .where(eq(priceHistory.store_product_id, found.id))
+        .orderBy(asc(priceHistory.scraped_at))
         .limit(200),
+      db
+        .select({
+          external_id: storeProductVariants.external_id,
+          name: storeProductVariants.name,
+          color: storeProductVariants.color,
+          size: storeProductVariants.size,
+          price: storeProductVariants.price,
+          list_price: storeProductVariants.list_price,
+          in_stock: storeProductVariants.in_stock,
+        })
+        .from(storeProductVariants)
+        .where(eq(storeProductVariants.store_product_id, found.id)),
       needsRate
-        ? db.from('exchange_rates').select('rate_to_hnl').eq('currency', currency).maybeSingle()
+        ? db
+            .select({ rate_to_hnl: exchangeRates.rate_to_hnl })
+            .from(exchangeRates)
+            .where(eq(exchangeRates.currency, currency))
         : null,
     ]);
-    if (historyError) throw new Error(historyError.message);
 
-    const priceHistory: PricePointRow[] = ((history ?? []) as Record<string, unknown>[]).map(
+    const pricePoints: PricePointRow[] = (history as Record<string, unknown>[]).map(
       (point) => ({
         scrapedAt: String(point.scraped_at),
         price: point.price === null ? null : Number(point.price),
@@ -1435,15 +1234,15 @@ export const getProductDetail = cache(async (
       }),
     );
 
-    const observedPrices = priceHistory
+    const observedPrices = pricePoints
       .map((point) => point.price)
       .filter((price): price is number => price !== null);
 
     // Equivalente en lempiras para precios en otra moneda. Si la tasa no está
     // (o 0054 no corrió), la ficha solo muestra el precio original.
     let priceInHnl: ProductDetail['priceInHnl'];
-    if (rateResult) {
-      const value = Number(rateResult.data?.rate_to_hnl);
+    if (rateRows) {
+      const value = Number(rateRows[0]?.rate_to_hnl);
       if (Number.isFinite(value) && value > 0) {
         priceInHnl = { amount: Math.round(Number(row.price) * value * 100) / 100, rate: value };
       }
@@ -1458,7 +1257,7 @@ export const getProductDetail = cache(async (
       altText: image.alt ?? undefined,
     }));
 
-    const variants = ((row.store_product_variants ?? []) as Record<string, unknown>[]).map(
+    const variants = (variantRows as Record<string, unknown>[]).map(
       (variant) => ({
         externalId: String(variant.external_id),
         name: (variant.name as string | null) ?? undefined,
@@ -1480,11 +1279,9 @@ export const getProductDetail = cache(async (
     const str = (value: unknown): string | undefined =>
       value === null || value === undefined || value === '' ? undefined : String(value);
 
-    const storeCategory = row.store_categories as {
-      name: string;
-      categories: { slug: string; name: string } | null;
-    } | null;
-    const canonical = storeCategory?.categories ?? null;
+    const storeCategory = found.store_category_name ? { name: found.store_category_name } : null;
+    const canonical =
+      found.category_slug && found.category_name ? { slug: found.category_slug, name: found.category_name } : null;
     const availability = row.availability as AvailabilityStatus;
 
     return {
@@ -1537,7 +1334,7 @@ export const getProductDetail = cache(async (
       specs: (row.specs as Record<string, unknown>) ?? {},
       attributes: (row.attributes as Record<string, unknown>) ?? {},
       badges: (row.badges as string[] | null) ?? [],
-      priceHistory,
+      priceHistory: pricePoints,
       priceInHnl,
       firstSeenAt: String(row.first_seen_at),
       lastSeenAt: String(row.last_seen_at),
@@ -1561,16 +1358,13 @@ export async function getProductSlug(id: string): Promise<string | null> {
   if (!UUID_PATTERN.test(id)) return null;
 
   return withRetry('slug de producto', async () => {
-    const { data, error } = await getSupabaseAdmin()
-      .from('store_products')
-      .select('public_slug')
-      .eq('id', id)
-      .eq('is_active', true)
-      .maybeSingle();
+    const [data] = await getDb()
+      .select({ public_slug: sp.public_slug })
+      .from(sp)
+      .where(and(eq(sp.id, id), eq(sp.is_active, true)));
 
-    if (error) throw new Error(error.message);
     if (!data) return null;
-    const slug = (data as { public_slug: string | null }).public_slug;
+    const slug = data.public_slug;
     return slug && slug !== '' ? slug : null;
   });
 }

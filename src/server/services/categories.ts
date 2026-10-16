@@ -1,5 +1,9 @@
 import 'server-only';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { getDb, type Db } from '@/server/db/client';
+import { pgErrorCode, pgErrorMessage, toNumber } from '@/server/db/pg';
+import { rpc } from '@/server/db/rpc';
+import { categories as categoriesTable, storeCategories as storeCategoriesTable, stores as storesTable } from '@/server/db/schema';
 import { toErrorResponse } from '@/server/scraping/api-guard';
 import { logError } from '@/server/errors/logError';
 import type {
@@ -28,6 +32,20 @@ import type {
  */
 
 const MAX_LEVEL = 1;
+
+/** Columnas de `CanonicalCategory`, en el orden de la tabla. */
+const CATEGORY_COLUMNS = {
+  id: categoriesTable.id,
+  parent_id: categoriesTable.parent_id,
+  slug: categoriesTable.slug,
+  name: categoriesTable.name,
+  description: categoriesTable.description,
+  icon: categoriesTable.icon,
+  path: categoriesTable.path,
+  level: categoriesTable.level,
+  position: categoriesTable.position,
+  is_active: categoriesTable.is_active,
+};
 
 export class CategoryError extends Error {
   constructor(
@@ -85,75 +103,65 @@ export interface CategoryAdminData {
  * bitácora de errores.
  */
 async function loadStoreCategoryCounts(
-  db: ReturnType<typeof getSupabaseAdmin>,
+  db: Db,
 ): Promise<Array<{ store_category_id: string; product_count: number }>> {
-  // Supabase devuelve como mucho 1000 filas por respuesta y hay más
-  // categorías de tienda que eso: se lee en páginas, ordenado para que las
-  // páginas no se pisen.
-  const rows: Array<{ store_category_id: string; product_count: number }> = [];
-  const pageSize = 1000;
-  let error: { code?: string; message: string } | null = null;
-  for (let from = 0; ; from += pageSize) {
-    const page = await db
-      .rpc('admin_store_category_counts')
-      .order('store_category_id')
-      .range(from, from + pageSize - 1);
-    if (page.error) {
-      error = page.error;
-      break;
-    }
-    const data = (page.data ?? []) as Array<{ store_category_id: string; product_count: number }>;
-    rows.push(...data);
-    if (data.length < pageSize) break;
-  }
-  if (error) {
+  try {
+    const rows = await db.execute<{ store_category_id: string; product_count: string | number }>(
+      sql`select store_category_id, product_count from find_your_prices.admin_store_category_counts()`,
+    );
+    return rows.map((row) => ({
+      store_category_id: row.store_category_id,
+      product_count: toNumber(row.product_count) ?? 0,
+    }));
+  } catch (error) {
     await logError({
       source: 'handled',
       level: 'warning',
-      error: new Error(`Conteos por categoría de tienda no disponibles: ${error.message}`),
+      error: new Error(`Conteos por categoría de tienda no disponibles: ${pgErrorMessage(error)}`),
       route: '/admin/categorias',
-      context: { code: error.code, hint: 'Correr la migración 0051_error_log_and_category_counts.sql' },
+      context: { code: pgErrorCode(error), hint: 'Correr la migración 0051_error_log_and_category_counts.sql' },
     });
     return [];
   }
-  return rows;
 }
 
 export async function loadCategoryAdminData(): Promise<CategoryAdminData> {
-  const db = getSupabaseAdmin();
+  const db = getDb();
+  const sc = storeCategoriesTable;
 
   const [categories, storeCategories, stores, facets] = await Promise.all([
     db
-      .from('categories')
-      .select('id, parent_id, slug, name, description, icon, path, level, position, is_active')
-      .order('level')
-      .order('position')
-      .order('name'),
-    fetchAll((from, to) =>
-      db
-        .from('store_categories')
-        .select(
-          'id, store_id, external_id, parent_id, name, level, url, product_count, category_id, is_active',
-        )
-        .order('store_id')
-        .order('name')
-        .range(from, to),
-    ),
-    db.from('stores').select('id, name, slug').order('name'),
+      .select(CATEGORY_COLUMNS)
+      .from(categoriesTable)
+      .orderBy(asc(categoriesTable.level), asc(categoriesTable.position), asc(categoriesTable.name)),
+    db
+      .select({
+        id: sc.id,
+        store_id: sc.store_id,
+        external_id: sc.external_id,
+        parent_id: sc.parent_id,
+        name: sc.name,
+        level: sc.level,
+        url: sc.url,
+        product_count: sc.product_count,
+        category_id: sc.category_id,
+        is_active: sc.is_active,
+      })
+      .from(sc)
+      .orderBy(asc(sc.store_id), asc(sc.name)),
+    db
+      .select({ id: storesTable.id, name: storesTable.name, slug: storesTable.slug })
+      .from(storesTable)
+      .orderBy(asc(storesTable.name)),
     loadStoreCategoryCounts(db),
   ]);
 
-  const failure = categories.error ?? stores.error;
-  if (failure) throw new Error(failure.message);
-
   const liveCounts = new Map<string, number>();
-  for (const row of facets as Array<{ store_category_id: string; product_count: number }>) {
+  for (const row of facets) {
     liveCounts.set(row.store_category_id, Number(row.product_count ?? 0));
   }
 
-  const storeNames = new Map(
-    ((stores.data ?? []) as StoreOption[]).map((store) => [store.id, store.name]),
-  );
+  const storeNames = new Map(stores.map((store) => [store.id, store.name]));
 
   type RawStoreCategory = {
     id: string;
@@ -203,30 +211,11 @@ export async function loadCategoryAdminData(): Promise<CategoryAdminData> {
   }
 
   return {
-    categories: (categories.data ?? []) as CanonicalCategory[],
+    categories: categories as CanonicalCategory[],
     storeCategories: rows,
-    stores: (stores.data ?? []) as StoreOption[],
+    stores: stores as StoreOption[],
     usage,
   };
-}
-
-/**
- * PostgREST corta en 1000 filas por petición. `store_categories` ya pasa de
- * 2600, así que se pagina hasta agotar.
- */
-async function fetchAll<T>(
-  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
-): Promise<T[]> {
-  const PAGE = 1000;
-  const all: T[] = [];
-  for (let index = 0; index < 50; index += 1) {
-    const { data, error } = await page(index * PAGE, index * PAGE + PAGE - 1);
-    if (error) throw new Error(error.message);
-    const rows = data ?? [];
-    all.push(...rows);
-    if (rows.length < PAGE) break;
-  }
-  return all;
 }
 
 // -----------------------------------------------------------------------------
@@ -244,25 +233,22 @@ export async function assignStoreCategories(
   const ids = [...new Set(storeCategoryIds.filter(Boolean))];
   if (ids.length === 0) throw new CategoryError('No se indicó ninguna categoría de tienda');
 
-  const db = getSupabaseAdmin();
+  const db = getDb();
 
   if (categoryId) {
-    const { data, error } = await db
-      .from('categories')
-      .select('id')
-      .eq('id', categoryId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!data) throw new CategoryError('La categoría canónica no existe', 404);
+    const [found] = await db
+      .select({ id: categoriesTable.id })
+      .from(categoriesTable)
+      .where(eq(categoriesTable.id, categoryId));
+    if (!found) throw new CategoryError('La categoría canónica no existe', 404);
   }
 
-  const { data, error } = await db
-    .from('store_categories')
-    .update({ category_id: categoryId })
-    .in('id', ids)
-    .select('id');
-  if (error) throw new Error(error.message);
-  return (data ?? []).length;
+  const updated = await db
+    .update(storeCategoriesTable)
+    .set({ category_id: categoryId })
+    .where(inArray(storeCategoriesTable.id, ids))
+    .returning({ id: storeCategoriesTable.id });
+  return updated.length;
 }
 
 // -----------------------------------------------------------------------------
@@ -280,12 +266,7 @@ export interface CategoryInput {
 }
 
 async function getCategory(id: string): Promise<CanonicalCategory> {
-  const { data, error } = await getSupabaseAdmin()
-    .from('categories')
-    .select('id, parent_id, slug, name, description, icon, path, level, position, is_active')
-    .eq('id', id)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
+  const [data] = await getDb().select(CATEGORY_COLUMNS).from(categoriesTable).where(eq(categoriesTable.id, id));
   if (!data) throw new CategoryError('La categoría no existe', 404);
   return data as CanonicalCategory;
 }
@@ -310,39 +291,38 @@ export async function createCategory(input: CategoryInput): Promise<CanonicalCat
   const parent = input.parent_id ? await getCategory(input.parent_id) : null;
   const { path, level } = placement(parent, slug);
 
-  const db = getSupabaseAdmin();
-  const { data, error } = await db
-    .from('categories')
-    .insert({
-      name,
-      slug,
-      parent_id: parent?.id ?? null,
-      path,
-      level,
-      position: input.position ?? (await nextPosition(parent?.id ?? null)),
-      description: input.description?.trim() || null,
-      icon: input.icon?.trim() || null,
-      is_active: input.is_active ?? true,
-    })
-    .select('id, parent_id, slug, name, description, icon, path, level, position, is_active')
-    .single();
-  if (error) {
-    if (error.code === '23505') throw new CategoryError(`Ya existe una categoría con el slug "${slug}"`, 409);
-    throw new Error(error.message);
+  const position = input.position ?? (await nextPosition(parent?.id ?? null));
+  try {
+    const [data] = await getDb()
+      .insert(categoriesTable)
+      .values({
+        name,
+        slug,
+        parent_id: parent?.id ?? null,
+        path,
+        level,
+        position,
+        description: input.description?.trim() || null,
+        icon: input.icon?.trim() || null,
+        is_active: input.is_active ?? true,
+      })
+      .returning(CATEGORY_COLUMNS);
+    return data as CanonicalCategory;
+  } catch (error) {
+    if (pgErrorCode(error) === '23505') throw new CategoryError(`Ya existe una categoría con el slug "${slug}"`, 409);
+    throw error;
   }
-  return data as CanonicalCategory;
 }
 
 /** Última posición entre los hermanos más uno, para que lo nuevo entre al final. */
 async function nextPosition(parentId: string | null): Promise<number> {
-  let query = getSupabaseAdmin()
-    .from('categories')
-    .select('position')
-    .order('position', { ascending: false })
+  const [data] = await getDb()
+    .select({ position: categoriesTable.position })
+    .from(categoriesTable)
+    .where(parentId ? eq(categoriesTable.parent_id, parentId) : isNull(categoriesTable.parent_id))
+    .orderBy(desc(categoriesTable.position))
     .limit(1);
-  query = parentId ? query.eq('parent_id', parentId) : query.is('parent_id', null);
-  const { data } = await query.maybeSingle();
-  return Number((data as { position?: number } | null)?.position ?? -1) + 1;
+  return Number(data?.position ?? -1) + 1;
 }
 
 /**
@@ -352,7 +332,7 @@ async function nextPosition(parentId: string | null): Promise<number> {
  */
 export async function updateCategory(id: string, input: CategoryInput): Promise<CanonicalCategory> {
   const current = await getCategory(id);
-  const db = getSupabaseAdmin();
+  const db = getDb();
 
   const name = input.name === undefined ? current.name : input.name.trim();
   if (!name) throw new CategoryError('El nombre es obligatorio');
@@ -373,45 +353,42 @@ export async function updateCategory(id: string, input: CategoryInput): Promise<
 
   const { path, level } = placement(parent, slug);
 
-  const patch: Record<string, unknown> = { name, slug, parent_id: parentId, path, level };
+  const patch: Partial<typeof categoriesTable.$inferInsert> = { name, slug, parent_id: parentId, path, level };
   if (input.description !== undefined) patch.description = input.description?.trim() || null;
   if (input.icon !== undefined) patch.icon = input.icon?.trim() || null;
   if (input.position !== undefined) patch.position = input.position;
   if (input.is_active !== undefined) patch.is_active = input.is_active;
 
-  const { data, error } = await db
-    .from('categories')
-    .update(patch)
-    .eq('id', id)
-    .select('id, parent_id, slug, name, description, icon, path, level, position, is_active')
-    .single();
-  if (error) {
-    if (error.code === '23505') throw new CategoryError(`Ya existe una categoría con el slug "${slug}"`, 409);
-    throw new Error(error.message);
+  let data: CanonicalCategory | undefined;
+  try {
+    [data] = (await db
+      .update(categoriesTable)
+      .set(patch)
+      .where(eq(categoriesTable.id, id))
+      .returning(CATEGORY_COLUMNS)) as CanonicalCategory[];
+  } catch (error) {
+    if (pgErrorCode(error) === '23505') throw new CategoryError(`Ya existe una categoría con el slug "${slug}"`, 409);
+    throw error;
   }
+  if (!data) throw new CategoryError('La categoría no existe', 404);
 
   // Las hijas heredan el path nuevo. Son pocas por nodo; un update por hija
   // es más claro que una sentencia con `case`.
   if (path !== current.path || level !== current.level) {
     for (const child of children) {
-      const { error: childError } = await db
-        .from('categories')
-        .update({ path: `${path}/${child.slug}`, level: level + 1 })
-        .eq('id', child.id);
-      if (childError) throw new Error(childError.message);
+      await db
+        .update(categoriesTable)
+        .set({ path: `${path}/${child.slug}`, level: level + 1 })
+        .where(eq(categoriesTable.id, child.id));
     }
   }
 
-  return data as CanonicalCategory;
+  return data;
 }
 
 async function listChildren(id: string): Promise<CanonicalCategory[]> {
-  const { data, error } = await getSupabaseAdmin()
-    .from('categories')
-    .select('id, parent_id, slug, name, description, icon, path, level, position, is_active')
-    .eq('parent_id', id);
-  if (error) throw new Error(error.message);
-  return (data ?? []) as CanonicalCategory[];
+  const rows = await getDb().select(CATEGORY_COLUMNS).from(categoriesTable).where(eq(categoriesTable.parent_id, id));
+  return rows as CanonicalCategory[];
 }
 
 /**
@@ -421,14 +398,14 @@ async function listChildren(id: string): Promise<CanonicalCategory[]> {
  */
 export async function deleteCategory(id: string): Promise<void> {
   const category = await getCategory(id);
-  const db = getSupabaseAdmin();
+  const db = getDb();
 
-  const [children, mapped] = await Promise.all([
-    db.from('categories').select('id', { count: 'exact', head: true }).eq('parent_id', id),
-    db.from('store_categories').select('id', { count: 'exact', head: true }).eq('category_id', id),
+  const [[childrenRow], [mappedRow]] = await Promise.all([
+    db.select({ n: count() }).from(categoriesTable).where(eq(categoriesTable.parent_id, id)),
+    db.select({ n: count() }).from(storeCategoriesTable).where(eq(storeCategoriesTable.category_id, id)),
   ]);
-  if (children.error) throw new Error(children.error.message);
-  if (mapped.error) throw new Error(mapped.error.message);
+  const children = { count: childrenRow?.n ?? 0 };
+  const mapped = { count: mappedRow?.n ?? 0 };
 
   if ((children.count ?? 0) > 0) {
     throw new CategoryError(
@@ -443,6 +420,5 @@ export async function deleteCategory(id: string): Promise<void> {
 
   // Un delete directo lo bloquea el candado de 0039; la función abre el
   // candado solo dentro de su propia transacción.
-  const { error } = await db.rpc('delete_category', { p_id: id });
-  if (error) throw new Error(error.message);
+  await rpc('delete_category', { p_id: id });
 }

@@ -3,12 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => import("@/test/server-only-stub"));
 
 const insert = vi.fn();
-vi.mock("@/server/db/supabase", () => ({
-  getSupabaseAdmin: () => ({
-    from: () => ({
-      insert: (row: unknown) => {
+// El esquema real arrastra drizzle-orm entero, y el test lo reimporta en cada
+// caso (`resetModules`): con la suite completa en paralelo pasaba de 5 s.
+vi.mock("@/server/db/schema", () => ({ errorLogs: { id: "id" } }));
+vi.mock("@/server/db/client", () => ({
+  getDb: () => ({
+    insert: () => ({
+      values: (row: unknown) => {
         insert(row);
-        return { select: () => ({ single: async () => ({ data: { id: 42 }, error: null }) }) };
+        return { returning: async () => [{ id: 42 }] };
       },
     }),
   }),
@@ -19,7 +22,6 @@ beforeEach(() => {
   insert.mockClear();
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
-  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://ejemplo.supabase.co");
 });
 
 afterEach(() => {

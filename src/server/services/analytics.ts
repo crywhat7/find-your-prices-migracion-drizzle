@@ -1,7 +1,11 @@
 import 'server-only';
 import { createHmac } from 'node:crypto';
 import { siteConfig } from '@/config/site';
-import { getSupabaseAdmin } from '@/server/db/supabase';
+import { and, countDistinct, eq, gte } from 'drizzle-orm';
+import { getDb } from '@/server/db/client';
+import { pgErrorCode, pgErrorMessage } from '@/server/db/pg';
+import { rpc } from '@/server/db/rpc';
+import { affiliateClickEvents, pageViews } from '@/server/db/schema';
 import {
   botName,
   classifyPath,
@@ -106,7 +110,8 @@ export async function recordPageView(payload: PageViewPayload, visitor: VisitorC
   const utm = readUtm(payload.search);
   const ownHost = new URL(siteConfig.url).hostname;
 
-  const { error } = await getSupabaseAdmin().from('page_views').insert({
+  try {
+    await getDb().insert(pageViews).values({
     path: payload.path,
     page_type: classifyPath(payload.path, payload.search),
     locale: payload.locale,
@@ -123,13 +128,13 @@ export async function recordPageView(payload: PageViewPayload, visitor: VisitorC
     screen_width: payload.screenWidth,
     visitor_hash: visitor.visitorHash,
     session_id: payload.sessionId,
-    // Solo cuando es un bot: así las visitas de personas se siguen guardando
-    // aunque la migración 0050 todavía no esté aplicada.
     ...(visitor.isBot ? { is_bot: true, bot_name: visitor.botName } : {}),
-  });
-  // Una visita perdida no le importa a nadie; un error en la consola sí avisa
-  // si falta la migración.
-  if (error) console.warn('[analytics] no se pudo registrar la visita:', error.message);
+    });
+  } catch (error) {
+    // Una visita perdida no le importa a nadie; un error en la consola sí avisa
+    // si falta la migración.
+    console.warn('[analytics] no se pudo registrar la visita:', pgErrorMessage(error));
+  }
 }
 
 export async function recordAffiliateClickEvent(
@@ -138,15 +143,18 @@ export async function recordAffiliateClickEvent(
   visitor: VisitorContext,
 ): Promise<void> {
   if (!shouldRecord()) return;
-  const { error } = await getSupabaseAdmin().from('affiliate_click_events').insert({
-    partner_id: partnerId,
-    offer_id: offerId,
-    country: visitor.country,
-    device: visitor.device,
-    visitor_hash: visitor.visitorHash,
-    ...(visitor.isBot ? { is_bot: true, bot_name: visitor.botName } : {}),
-  });
-  if (error) console.warn('[analytics] no se pudo registrar el clic:', error.message);
+  try {
+    await getDb().insert(affiliateClickEvents).values({
+      partner_id: partnerId,
+      offer_id: offerId,
+      country: visitor.country,
+      device: visitor.device,
+      visitor_hash: visitor.visitorHash,
+      ...(visitor.isBot ? { is_bot: true, bot_name: visitor.botName } : {}),
+    });
+  } catch (error) {
+    console.warn('[analytics] no se pudo registrar el clic:', pgErrorMessage(error));
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -201,11 +209,11 @@ export interface AnalyticsReport {
 
 const EMPTY_TOTALS: Totals = { views: 0, visitors: 0, sessions: 0, mobile: 0, honduras: 0, visitorDays: 0 };
 
-function explain(error: { code?: string; message: string }): string {
-  if (error.code === '42883' || error.code === 'PGRST202' || error.code === '42P01' || error.code === 'PGRST205') {
-    return 'Faltan las funciones de estadísticas: corré las migraciones 0048_analytics.sql y 0050_analytics_bots.sql en Supabase.';
+function explain(error: unknown): string {
+  if (['42883', '42P01'].includes(pgErrorCode(error) ?? '')) {
+    return 'Faltan las funciones de estadísticas: corré las migraciones 0048_analytics.sql y 0050_analytics_bots.sql.';
   }
-  return error.message;
+  return pgErrorMessage(error);
 }
 
 function toTotals(value: unknown): Totals {
@@ -227,16 +235,20 @@ export async function getAnalyticsReport(
   limit = 12,
   includeBots = false,
 ): Promise<AnalyticsReport> {
-  const { data, error } = await getSupabaseAdmin().rpc('analytics_report', {
-    p_from: from.toISOString(),
-    p_to: to.toISOString(),
-    p_bucket: bucket,
-    p_limit: limit,
-    // Solo se manda cuando se piden: así, sin la migración 0050, el panel
-    // sigue andando con la función de 0048 (que excluye bots igual).
-    ...(includeBots ? { p_include_bots: true } : {}),
-  });
-  if (error) throw new Error(explain(error));
+  let data: unknown;
+  try {
+    data = await rpc('analytics_report', {
+      p_from: from.toISOString(),
+      p_to: to.toISOString(),
+      p_bucket: bucket,
+      p_limit: limit,
+      // Solo se manda cuando se piden: así, sin la migración 0050, el panel
+      // sigue andando con la función de 0048 (que excluye bots igual).
+      ...(includeBots ? { p_include_bots: true } : {}),
+    });
+  } catch (error) {
+    throw new Error(explain(error));
+  }
 
   const raw = (data ?? {}) as Record<string, unknown>;
   const list = (key: string) => ((raw[key] ?? []) as Breakdown[]).map((row) => ({
@@ -270,22 +282,29 @@ export async function getAnalyticsReport(
 }
 
 export async function getAnalyticsTotals(from: Date, to: Date, includeBots = false): Promise<Totals> {
-  const { data, error } = await getSupabaseAdmin().rpc('analytics_totals', {
-    p_from: from.toISOString(),
-    p_to: to.toISOString(),
-    ...(includeBots ? { p_include_bots: true } : {}),
-  });
-  if (error) return EMPTY_TOTALS;
-  return toTotals(data);
+  try {
+    const data = await rpc('analytics_totals', {
+      p_from: from.toISOString(),
+      p_to: to.toISOString(),
+      ...(includeBots ? { p_include_bots: true } : {}),
+    });
+    return toTotals(data);
+  } catch {
+    return EMPTY_TOTALS;
+  }
 }
 
 /** Visitantes distintos en los últimos 30 minutos: "ahora en el sitio". */
 export async function getLiveVisitors(): Promise<number> {
   const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const query = () => getSupabaseAdmin().from('page_views').select('visitor_hash').gte('created_at', since).limit(5000);
-  // Solo personas. Sin la 0050 no existe `is_bot` (ni hay bots guardados).
-  let { data, error } = await query().eq('is_bot', false);
-  if (error) ({ data, error } = await query());
-  if (error) return 0;
-  return new Set((data ?? []).map((row) => String(row.visitor_hash))).size;
+  try {
+    // Solo personas.
+    const [row] = await getDb()
+      .select({ n: countDistinct(pageViews.visitor_hash) })
+      .from(pageViews)
+      .where(and(gte(pageViews.created_at, since), eq(pageViews.is_bot, false)));
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
 }
