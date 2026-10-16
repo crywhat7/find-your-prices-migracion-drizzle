@@ -23,9 +23,10 @@ import { useCatalogFeed, type CatalogFeed, type UseCatalogFeedOptions } from "./
  *     el fallo que se saltaba artículos entre la primera y la segunda página.
  *   - Un id repetido no entra dos veces, porque el catálogo cambia entre
  *     páginas mientras el scraper inserta.
- *   - La carga automática se detiene tras un número fijo de tandas y un clic
- *     manual le devuelve el presupuesto. Es lo que mantiene el pie de página
- *     alcanzable.
+ *   - Llegar al final de la lista no carga nada solo: cada página la trae el
+ *     botón "Cargar más productos" (`AUTO_PAGES_PER_RUN = 0`). Es lo que
+ *     mantiene el pie de página alcanzable y no gasta peticiones en tandas
+ *     que nadie pidió.
  *
  * El hook se monta dentro de un componente de verdad y no con `renderHook`
  * porque necesita que su centinela exista en el DOM: sin nodo al que
@@ -163,13 +164,18 @@ describe("useCatalogFeed — primer lote", () => {
   });
 });
 
+/** Lo que hace el botón "Cargar más productos" del pie del catálogo. */
+async function clickLoadMore(feed: () => FeedView) {
+  await act(async () => feed().loadMore());
+}
+
 describe("useCatalogFeed — páginas siguientes", () => {
   it("pide la página siguiente desde cuántos artículos hay, no desde un número de página", async () => {
     const fetchMock = serveByOffset();
     vi.stubGlobal("fetch", fetchMock);
 
     const { feed } = renderFeed();
-    await scrollToEnd();
+    await clickLoadMore(feed);
 
     await waitFor(() => expect(feed().products).toHaveLength(CATALOG_PAGE_SIZE * 2));
 
@@ -192,7 +198,7 @@ describe("useCatalogFeed — páginas siguientes", () => {
     );
 
     const { feed } = renderFeed();
-    await scrollToEnd();
+    await clickLoadMore(feed);
 
     await waitFor(() => expect(feed().products.length).toBeGreaterThan(CATALOG_PAGE_SIZE));
 
@@ -206,59 +212,64 @@ describe("useCatalogFeed — páginas siguientes", () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 500 }) as Response));
 
     const { feed } = renderFeed();
-    await scrollToEnd();
+    await clickLoadMore(feed);
 
     await waitFor(() => expect(feed().hasError).toBe(true));
     expect(feed().products).toHaveLength(CATALOG_PAGE_SIZE);
   });
-});
-
-describe("useCatalogFeed — tope de la carga automática", () => {
-  it("deja de cargar sola tras cuatro tandas y lo dice", async () => {
-    vi.stubGlobal("fetch", serveByOffset());
-
-    const { feed } = renderFeed();
-
-    for (let round = 0; round < 6; round += 1) {
-      await scrollToEnd();
-      await waitFor(() => expect(feed().isLoadingMore).toBe(false));
-    }
-
-    // Cuatro tandas automáticas sobre el lote inicial y ni una más, por mucho
-    // que se siga llegando al final.
-    expect(feed().products).toHaveLength(CATALOG_PAGE_SIZE * 5);
-    expect(feed().isAutoPaused).toBe(true);
-    expect(feed().hasMore).toBe(true);
-  });
-
-  it("un clic manual devuelve el presupuesto y la carga automática sigue", async () => {
-    vi.stubGlobal("fetch", serveByOffset());
-
-    const { feed } = renderFeed();
-
-    for (let round = 0; round < 5; round += 1) {
-      await scrollToEnd();
-      await waitFor(() => expect(feed().isLoadingMore).toBe(false));
-    }
-    expect(feed().isAutoPaused).toBe(true);
-
-    await act(async () => feed().loadMore());
-    await waitFor(() => expect(feed().isLoadingMore).toBe(false));
-
-    expect(feed().isAutoPaused).toBe(false);
-    expect(feed().products).toHaveLength(CATALOG_PAGE_SIZE * 6);
-  });
 
   it("no pide más allá del total", async () => {
     const small = CATALOG_PAGE_SIZE + 5;
-    vi.stubGlobal("fetch", serveByOffset(small));
+    const fetchMock = serveByOffset(small);
+    vi.stubGlobal("fetch", fetchMock);
 
     const { feed } = renderFeed({ initialTotal: small });
     expect(feed().hasMore).toBe(true);
 
-    await scrollToEnd();
+    await clickLoadMore(feed);
     await waitFor(() => expect(feed().products).toHaveLength(small));
-
     expect(feed().hasMore).toBe(false);
+
+    // Con todo a la vista, otro clic no sale a la red.
+    await clickLoadMore(feed);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useCatalogFeed — sin carga automática", () => {
+  it("llegar al final de la lista no pide nada: espera el botón", async () => {
+    const fetchMock = serveByOffset();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { feed } = renderFeed();
+
+    for (let round = 0; round < 3; round += 1) {
+      await scrollToEnd();
+    }
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(feed().products).toHaveLength(CATALOG_PAGE_SIZE);
+    // El botón queda como acción principal desde el primer lote.
+    expect(feed().isAutoPaused).toBe(true);
+    expect(feed().hasMore).toBe(true);
+  });
+
+  it("cada clic trae una sola página y no reactiva la carga automática", async () => {
+    const fetchMock = serveByOffset();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { feed } = renderFeed();
+
+    await clickLoadMore(feed);
+    await waitFor(() => expect(feed().products).toHaveLength(CATALOG_PAGE_SIZE * 2));
+
+    // Después del clic, desplazarse hasta el final sigue sin cargar sola.
+    await scrollToEnd();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(feed().isAutoPaused).toBe(true);
+
+    await clickLoadMore(feed);
+    await waitFor(() => expect(feed().products).toHaveLength(CATALOG_PAGE_SIZE * 3));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

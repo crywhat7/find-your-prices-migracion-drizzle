@@ -237,7 +237,25 @@ describe.each(ROUTES)("Home $name", ({ Page, dict }) => {
       await renderPage(Page);
       const list = screen.getByRole("list", { name: dict.resultsListLabel });
       expect(list).toBeInTheDocument();
-      expect(within(list).getAllByRole("listitem")).toHaveLength(products.length);
+
+      // El banner del aliado ocupa un item propio de la lista (una fila
+      // entera de la retícula), así que se cuenta aparte: cada producto
+      // sigue teniendo su item y el banner no reemplaza a ninguno.
+      const items = within(list).getAllByRole("listitem");
+      const banner = within(list).getByRole("complementary", { name: dict.partnerBannerLabel });
+      const productItems = items.filter((item) => !item.contains(banner));
+      expect(productItems).toHaveLength(products.length);
+    });
+
+    test("el banner del aliado va después del sexto producto, no encima de los resultados", async () => {
+      await renderPage(Page);
+      const list = screen.getByRole("list", { name: dict.resultsListLabel });
+      const items = within(list).getAllByRole("listitem");
+      const banner = within(list).getByRole("complementary", { name: dict.partnerBannerLabel });
+
+      // `inlineAdAfter` por defecto de ProductGrid: seis productos y el banner.
+      expect(items.findIndex((item) => item.contains(banner))).toBe(6);
+      expect(within(banner).getByRole("img", { name: dict.enebaBannerAlt })).toBeInTheDocument();
     });
 
     test("expone un LocaleSwitcher con enlaces EN/ES alcanzables por nombre", async () => {

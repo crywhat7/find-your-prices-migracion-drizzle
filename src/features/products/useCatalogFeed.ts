@@ -41,15 +41,16 @@ const PREFETCH_MARGIN = "800px 0px";
 /**
  * Cuántas páginas se cargan solas antes de devolver el control.
  *
- * El scroll infinito sin freno tiene dos costes que no se ven hasta que ya
- * duelen: el documento no termina nunca —y con él se va el pie de página, que
- * es donde viven los enlaces legales— y el DOM crece sin techo, con una imagen
- * por ficha, en un teléfono con datos móviles que es donde ocurre la mayoría de
- * las visitas.
+ * En 0 a propósito: llegar al final de la lista no carga nada, cada página la
+ * trae el botón "Cargar más productos". El scroll infinito tiene costes que no
+ * se ven hasta que ya duelen: el documento no termina nunca —y con él se va el
+ * pie de página, que es donde viven los enlaces legales—, el DOM crece sin
+ * techo, con una imagen por ficha, en un teléfono con datos móviles, y cada
+ * tanda es una petición al Worker que nadie pidió de forma explícita.
  *
- * Cuatro tandas sobre el lote inicial son ~240 artículos. Quien llegó buscando
- * una licuadora nunca ve el freno; quien está paseando pulsa una vez y arranca
- * otra tanda automática. Nadie queda encerrado en una página sin fondo.
+ * El mecanismo sigue entero: con un número mayor, ese número de tandas llega
+ * solo al desplazarse y después manda el botón (un clic reinicia la cuenta).
+ * Si se cambia, hay que actualizar las pruebas de `useCatalogFeed.test.tsx`.
  */
 const AUTO_PAGES_PER_RUN = 0;
 
