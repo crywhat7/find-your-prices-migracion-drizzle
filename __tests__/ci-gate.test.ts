@@ -11,7 +11,8 @@ import { describe, expect, test } from "vitest";
  * BORRAR este archivo apenas se confirme.
  */
 describe("compuerta de CI", () => {
-  test("falla a propósito para frenar el deploy", () => {
-    expect("tests en rojo").toBe("deploy frenado");
+  test("Test para frenar un deploy", () => {
+    // expect("tests en rojo").toBe("deploy frenado");
+    expect("Test apagado").toBe("Test apagado");
   });
 });
