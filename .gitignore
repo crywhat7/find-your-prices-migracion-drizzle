@@ -66,3 +66,6 @@ next-env.d.ts
 # Cloudflare / OpenNext (salida del build y estado local de wrangler)
 /.open-next/
 /.wrangler/
+
+# drizzle-kit pull (introspección local, no se versiona)
+/drizzle/

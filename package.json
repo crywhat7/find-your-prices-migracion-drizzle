@@ -14,12 +14,16 @@
     "test:run": "vitest run",
     "scrape:local": "npx --yes tsx@4 --conditions=react-server --env-file=.env.local scripts/scrape-all-local.ts",
     "eneba:import": "npx --yes tsx@4 --conditions=react-server --env-file-if-exists=.env.local scripts/import-eneba.ts",
-    "reingest:local":"npx --yes tsx@4 --conditions=react-server --env-file=.env.local scripts/reingest-local.ts",
-    "sitemaps:generate": "npx --yes tsx@4 --conditions=react-server --tsconfig scripts/tsconfig.json --env-file-if-exists=.env.local scripts/generate-sitemaps.ts"
+    "reingest:local": "npx --yes tsx@4 --conditions=react-server --env-file=.env.local scripts/reingest-local.ts",
+    "sitemaps:generate": "npx --yes tsx@4 --conditions=react-server --tsconfig scripts/tsconfig.json --env-file-if-exists=.env.local scripts/generate-sitemaps.ts",
+    "db:pull": "drizzle-kit pull",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
+    "drizzle-orm": "^0.45.4",
     "next": "16.3.4",
+    "postgres": "^3.4.9",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1"
@@ -34,6 +38,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.1.1",
+    "drizzle-kit": "^0.31.11",
     "esbuild": "0.28.1",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
