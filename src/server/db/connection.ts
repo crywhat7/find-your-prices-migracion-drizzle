@@ -36,9 +36,9 @@ declare global {
 
 function createDb(connectionString: string, opts: { hyperdrive: boolean }) {
   const client = postgres(connectionString, {
-    // Hyperdrive ya agrupa conexiones; desde Node un pool chico alcanza para
-    // los scripts y para `next dev`.
-    max: opts.hyperdrive ? 5 : 10,
+    max: poolSize(opts.hyperdrive),
+    // En serverless no conviene dejar conexiones colgadas ocupando cupo del pooler.
+    idle_timeout: 20,
     // Ahorra un viaje por conexión. Los tipos propios del esquema (enums) llegan
     // como texto, que es lo que la app espera.
     fetch_types: false,
@@ -47,6 +47,19 @@ function createDb(connectionString: string, opts: { hyperdrive: boolean }) {
     prepare: !isTransactionPooler(connectionString),
   });
   return drizzle({ client, schema });
+}
+
+/**
+ * Tamaño del pool por proceso. El pooler de Supabase en modo sesión (5432)
+ * corta en 15 clientes para TODO el proyecto (EMAXCONNSESSION), y en Vercel
+ * cada función y cada worker del build abre su propio pool. Ahí va chico.
+ */
+function poolSize(hyperdrive: boolean): number {
+  const fromEnv = Number(process.env.DATABASE_POOL_MAX);
+  if (Number.isInteger(fromEnv) && fromEnv > 0) return fromEnv;
+  if (hyperdrive) return 5;
+  if (process.env.VERCEL || process.env.CI) return 3;
+  return 10;
 }
 
 /**
@@ -103,7 +116,11 @@ export function hasDatabaseConfig(): boolean {
 }
 
 const perRequest = new WeakMap<object, Db>();
-let processDb: Db | null = null;
+// En `globalThis` y no en una variable del módulo: Turbopack puede meter este
+// módulo en varios chunks (uno por página en el build) y cada copia abriría su
+// propio pool contra el mismo cupo del pooler.
+const PROCESS_DB = Symbol.for('find-your-prices.processDb');
+type GlobalWithDb = typeof globalThis & { [PROCESS_DB]?: Db };
 
 export type ConnectionSource = 'hyperdrive' | 'database_url' | 'none';
 export type ConnectionMode = 'hyperdrive' | 'transaction-pooler' | 'session-pooler' | 'direct' | 'unknown';
@@ -149,7 +166,9 @@ export function getDb(): Db {
     return db;
   }
 
-  if (processDb) return processDb;
+  const holder = globalThis as GlobalWithDb;
+  const existing = holder[PROCESS_DB];
+  if (existing) return existing;
 
   const url = process.env.DATABASE_URL;
   if (!url) {
@@ -158,6 +177,7 @@ export function getDb(): Db {
     );
   }
   assertReachableHost(url);
-  processDb = createDb(url, { hyperdrive: false });
-  return processDb;
+  const db = createDb(url, { hyperdrive: false });
+  holder[PROCESS_DB] = db;
+  return db;
 }

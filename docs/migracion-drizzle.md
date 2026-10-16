@@ -112,7 +112,9 @@ Ojo con esto para producción:
   `getaddrinfo ENOTFOUND` al prerenderizar (p. ej. `/aliados`). `DATABASE_URL`
   tiene que ser el "Transaction pooler" (`aws-X-ca-central-1.pooler.supabase.com:6543`,
   usuario `postgres.<ref>`). `getDb()` corta con un mensaje claro si en
-  Vercel/CI recibe la conexión directa.
+  Vercel/CI recibe la conexión directa. El modo sesión (5432) tampoco sirve
+  en Vercel: corta en 15 clientes (`EMAXCONNSESSION`) y el build lo agota. En
+  Vercel/CI el pool es de 3 conexiones por proceso (`DATABASE_POOL_MAX`).
 - Verificar los límites de Hyperdrive y de conexiones TCP en el plan Free de
   Workers antes del corte.
 
