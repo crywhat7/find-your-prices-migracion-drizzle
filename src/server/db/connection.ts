@@ -35,8 +35,9 @@ declare global {
 }
 
 function createDb(connectionString: string, opts: { hyperdrive: boolean }) {
+  const transactionPooler = isTransactionPooler(connectionString);
   const client = postgres(connectionString, {
-    max: poolSize(opts.hyperdrive),
+    max: poolSize(opts.hyperdrive, transactionPooler),
     // En serverless no conviene dejar conexiones colgadas ocupando cupo del pooler.
     idle_timeout: 20,
     // Sin esto una conexión que no llega espera 30 s por intento, y en el
@@ -47,7 +48,21 @@ function createDb(connectionString: string, opts: { hyperdrive: boolean }) {
     fetch_types: false,
     // El pooler de Supabase en modo transacción (puerto 6543) no soporta
     // sentencias preparadas. Hyperdrive y una conexión directa sí.
-    prepare: !isTransactionPooler(connectionString),
+    prepare: !transactionPooler,
+    // postgres.js manda hasta 100 consultas seguidas por conexión sin esperar
+    // respuesta (pipelining). Supavisor en modo transacción no lo aguanta: puede
+    // cambiar de backend entre una y otra y la respuesta se pierde; la promesa
+    // queda colgada para siempre (porsager/postgres#970). Con un pool chico y un
+    // `Promise.all` pasa siempre: el build se trababa 60 s por página. Ahí, una
+    // consulta a la vez por conexión (0: la activa y ninguna más en vuelo; con 1
+    // todavía se manda una de más, que es justo la que se pierde).
+    //
+    // OJO: con `max_pipeline: 0`, postgres.js 3.4.9 rompe `sql.begin()`
+    // (UNSAFE_TRANSACTION, porsager/postgres#1210), o sea `db.transaction()` de
+    // Drizzle, y con `fetch_types: false` se cuelga `reserve()` (#1219). Hoy no
+    // se usa ninguno de los dos; si hace falta una transacción, usar una RPC
+    // (función SQL) o revisar si ya salió el arreglo.
+    ...(transactionPooler ? ({ max_pipeline: 0 } as object) : {}),
   });
   return drizzle({ client, schema });
 }
@@ -56,12 +71,14 @@ function createDb(connectionString: string, opts: { hyperdrive: boolean }) {
  * Tamaño del pool por proceso. El pooler de Supabase en modo sesión (5432)
  * corta en 15 clientes para TODO el proyecto (EMAXCONNSESSION), y en Vercel
  * cada función y cada worker del build abre su propio pool. Ahí va chico.
+ * En modo transacción (6543) las conexiones de cliente son baratas y, sin
+ * pipelining, cada una lleva una sola consulta: un poco más de margen.
  */
-function poolSize(hyperdrive: boolean): number {
+function poolSize(hyperdrive: boolean, transactionPooler: boolean): number {
   const fromEnv = Number(process.env.DATABASE_POOL_MAX);
   if (Number.isInteger(fromEnv) && fromEnv > 0) return fromEnv;
   if (hyperdrive) return 5;
-  if (process.env.VERCEL || process.env.CI) return 3;
+  if (process.env.VERCEL || process.env.CI) return transactionPooler ? 5 : 3;
   return 10;
 }
 
@@ -133,6 +150,10 @@ export interface ConnectionInfo {
   mode: ConnectionMode;
   host: string | null;
   port: string | null;
+  /** Conexiones máximas del pool de este proceso. */
+  poolMax: number | null;
+  /** Si postgres.js manda varias consultas por conexión sin esperar respuesta. */
+  pipelining: boolean | null;
 }
 
 /** De dónde sale la conexión que usaría `getDb()` ahora mismo. Sin credenciales. */
@@ -140,22 +161,31 @@ export function describeConnection(): ConnectionInfo {
   const worker = workerContext();
   const source: ConnectionSource = worker ? 'hyperdrive' : process.env.DATABASE_URL ? 'database_url' : 'none';
   const raw = worker?.hyperdrive.connectionString ?? process.env.DATABASE_URL;
-  if (!raw) return { source, mode: 'unknown', host: null, port: null };
+  const unknown: ConnectionInfo = { source, mode: 'unknown', host: null, port: null, poolMax: null, pipelining: null };
+  if (!raw) return unknown;
 
-  let host: string | null = null;
-  let port: string | null = null;
+  let host: string;
+  let port: string;
   try {
     const url = new URL(raw);
     host = url.hostname;
     port = url.port || '5432';
   } catch {
-    return { source, mode: 'unknown', host: null, port: null };
+    return unknown;
   }
 
+  const transactionPooler = isTransactionPooler(raw);
   let mode: ConnectionMode = 'direct';
   if (worker) mode = 'hyperdrive';
   else if (host.endsWith('.pooler.supabase.com')) mode = port === '6543' ? 'transaction-pooler' : 'session-pooler';
-  return { source, mode, host, port };
+  return {
+    source,
+    mode,
+    host,
+    port,
+    poolMax: poolSize(Boolean(worker), transactionPooler),
+    pipelining: !transactionPooler,
+  };
 }
 
 export function getDb(): Db {

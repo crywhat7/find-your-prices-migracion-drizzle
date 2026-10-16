@@ -114,11 +114,21 @@ Ojo con esto para producción:
   usuario `postgres.<ref>`). `getDb()` corta con un mensaje claro si en
   Vercel/CI recibe la conexión directa. El modo sesión (5432) tampoco sirve
   en Vercel: corta en 15 clientes (`EMAXCONNSESSION`) y el build lo agota. En
-  Vercel/CI el pool es de 3 conexiones por proceso (`DATABASE_POOL_MAX`).
+  Vercel/CI el pool es de 5 conexiones por proceso en modo transacción y 3 en
+  modo sesión (`DATABASE_POOL_MAX` lo pisa).
 - `npm run build` corre antes `scripts/db-check.mjs` (`prebuild`, solo en
   Vercel/CI): prueba `DATABASE_URL` con timeout de 10 s y, si es el pooler y
   falla, prueba el otro clúster (`aws-0`/`aws-1`) y dice cuál responde. Sin
   esto, una base inalcanzable cuelga cada página 60 s × 3 intentos.
+- En modo transacción (6543) el cliente apaga el pipelining de postgres.js
+  (`max_pipeline: 0`): Supavisor puede cambiar de backend entre consultas
+  encoladas en la misma conexión y la respuesta se pierde
+  ([porsager/postgres#970](https://github.com/porsager/postgres/issues/970)).
+  Con pool chico y `Promise.all` pasa siempre: el build se trababa en
+  `/aliados`, `/` y `/tiendas`. El `db-check` lanza 24 consultas en paralelo
+  con un pool de 3 para detectarlo. Con esa opción, postgres.js 3.4.9 rompe
+  `db.transaction()` (#1210) y `reserve()` (#1219): hoy no se usan; si hace
+  falta atomicidad, hacerlo en una función SQL llamada con `rpc()`.
 - Verificar los límites de Hyperdrive y de conexiones TCP en el plan Free de
   Workers antes del corte.
 

@@ -3,10 +3,11 @@
  *
  * El build prerenderiza páginas que consultan Postgres. Si la conexión no
  * llega, Next no muestra el error: espera 60 s por página, reintenta tres
- * veces y el build se arrastra durante muchos minutos. Este chequeo hace una
- * consulta con timeout corto e imprime qué pasó. Si el host es el pooler de
- * Supabase y falla, prueba el otro clúster (aws-0 / aws-1) para decir cuál es
- * el correcto.
+ * veces y el build se arrastra durante muchos minutos. Este chequeo lanza un
+ * lote de consultas en paralelo con timeout corto e imprime qué pasó (así
+ * también caza el cuelgue de Supavisor con pipelining, porsager/postgres#970).
+ * Si el host es el pooler de Supabase y falla, prueba el otro clúster
+ * (aws-0 / aws-1) para decir cuál es el correcto.
  *
  * Solo corre en Vercel/CI. Sin DATABASE_URL no hace nada.
  */
@@ -24,18 +25,28 @@ function describe(urlString) {
 
 async function probe(urlString) {
   const url = new URL(urlString);
+  const transactionPooler = url.port === '6543';
+  // Opciones de `createDb` en Vercel, con un pool aún más chico (3) para que
+  // haya más consultas que conexiones: en modo transacción, sin pipelining.
   const sql = postgres(urlString, {
-    max: 1,
+    max: 3,
     connect_timeout: 10,
     idle_timeout: 1,
     fetch_types: false,
-    prepare: url.port !== '6543',
+    prepare: !transactionPooler,
+    ...(transactionPooler ? { max_pipeline: 0 } : {}),
   });
   const started = Date.now();
   try {
     const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('sin respuesta en 15 s')), 15_000));
-    const [row] = await Promise.race([sql`select current_database() as db, current_user as usr`, timeout]);
-    return { ok: true, ms: Date.now() - started, detail: `${row.db} · ${row.usr}` };
+    // Una consulta sola no alcanza: el build lanza muchas en paralelo sobre
+    // el pool, que es donde el pooler se trababa.
+    const burst = Promise.all(
+      Array.from({ length: 24 }, (_, i) => sql`select ${i}::int as n, current_database() as db, current_user as usr`),
+    );
+    const rows = await Promise.race([burst, timeout]);
+    const [row] = rows[0];
+    return { ok: true, ms: Date.now() - started, detail: `${row.db} · ${row.usr}, 24 consultas en paralelo` };
   } catch (error) {
     return { ok: false, ms: Date.now() - started, detail: `${error.code ?? ''} ${error.message}`.trim() };
   } finally {

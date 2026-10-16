@@ -27,6 +27,12 @@ export function DatabaseStatusCard({ status }: { status: DatabaseStatus }) {
     ['Origen', SOURCE_LABEL[connection.source]],
     ['Modo', MODE_LABEL[connection.mode]],
     ['Host', connection.host ? `${connection.host}:${connection.port}` : null],
+    [
+      'Pool · pipelining',
+      connection.poolMax != null
+        ? `${connection.poolMax} conexiones · ${connection.pipelining ? 'activado' : 'apagado'}`
+        : null,
+    ],
     ['Base · usuario', status.database ? `${status.database} · ${status.user}` : null],
     ['Postgres', status.serverVersion],
     ['application_name', status.applicationName],

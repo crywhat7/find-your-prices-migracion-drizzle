@@ -4,6 +4,7 @@ import { unstable_cache } from 'next/cache';
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lte, notInArray, notLike, or, sql, type SQL } from 'drizzle-orm';
 import { getDb, hasDatabaseConfig } from '@/server/db/client';
 import { rpc } from '@/server/db/rpc';
+import { pgErrorMessage } from '@/server/db/pg';
 import {
   categories,
   exchangeRates,
@@ -250,8 +251,8 @@ export async function withRetry<T>(label: string, action: () => Promise<T>, atte
       }
     }
   }
-  const message = lastError instanceof Error ? lastError.message : String(lastError);
-  throw new Error(`${label}: ${message}`);
+  // La causa de Postgres, no el "Failed query: <sql>" de Drizzle, que no dice qué falló.
+  throw new Error(`${label}: ${pgErrorMessage(lastError)}`);
 }
 
 // -----------------------------------------------------------------------------
