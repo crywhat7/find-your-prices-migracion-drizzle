@@ -21,7 +21,7 @@ export interface FacetOption {
    * tiendas y marcas, donde el valor ya es el nombre.
    */
   label?: string;
-  /** Insignia junto al nombre: "Aliado" en las tiendas aliadas. */
+  /** Tienda aliada: se pinta su insignia y este texto ("Aliado") es el `alt`. */
   badge?: string;
   /** Hijas, en el caso de una raíz del árbol de categorías. */
   children?: FacetOption[];

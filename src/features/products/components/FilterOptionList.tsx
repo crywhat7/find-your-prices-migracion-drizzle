@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState, type ReactNode } from "react";
+import { PartnerBadge } from "@/features/affiliates/PartnerBadge";
 import { UNCATEGORIZED_VALUE, type FacetOption } from "@/features/products/categoryFacets";
 
 /**
@@ -295,7 +296,7 @@ function Option({
 }: {
   name: string;
   label: string;
-  /** Insignia junto al nombre ("Aliado" en las tiendas aliadas). */
+  /** Insignia de tienda aliada junto al nombre; el texto es su `alt` ("Aliado"). */
   badge?: string;
   count?: number;
   checked: boolean;
@@ -336,11 +337,7 @@ function Option({
 
         <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-[var(--text-secondary)] peer-checked:text-[var(--text)]">
           {label}
-          {badge && (
-            <span className="ml-1.5 rounded-full bg-[var(--accent-soft)] px-1.5 py-px align-[1px] text-[0.625rem] font-semibold uppercase tracking-[0.04em] text-[var(--accent)]">
-              {badge}
-            </span>
-          )}
+          {badge && <PartnerBadge label={badge} className="ml-1.5 align-[-3px]" />}
         </span>
 
         {/* El conteo va antes de elegir, no después: saber que "Televisores"

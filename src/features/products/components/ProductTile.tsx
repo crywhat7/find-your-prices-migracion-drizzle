@@ -8,6 +8,7 @@ import type { CompareToggleLabels } from "./CompareToggle";
 import { FavoriteToggle, type FavoriteToggleLabels } from "./FavoriteToggle";
 import { CartToggle, type CartToggleLabels } from "@/features/cart/components/CartToggle";
 import { isPartnerStore } from "@/features/affiliates/affiliateRules";
+import { PartnerBadge } from "@/features/affiliates/PartnerBadge";
 
 /** Insignia de tienda aliada. La ficha no tiene diccionario: recibe el locale de precios ("es-HN", "en-US"). */
 const PARTNER_BADGE = { es: "Aliado", en: "Partner" } as const;
@@ -113,12 +114,7 @@ export function ProductTile({
           <span data-fyp-piece className="flex min-w-0 items-center gap-1.5 text-[0.75rem] text-[var(--text-tertiary)]">
             <span className="truncate">{store}</span>
             {isPartnerStore({ slug: product.storeSlug, name: store }) && (
-              <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-[var(--accent-soft)] py-px pr-1.5 pl-1 text-[0.625rem] font-semibold uppercase tracking-[0.04em] text-[var(--accent)]">
-                <svg aria-hidden="true" viewBox="0 0 16 16" className="h-2.5 w-2.5" fill="currentColor">
-                  <path d="M8 .8 9.9 2.3l2.4-.1.7 2.3 2 1.4-.8 2.3.8 2.2-2 1.4-.7 2.3-2.4-.1L8 15.2l-1.9-1.5-2.4.1-.7-2.3-2-1.4.8-2.2-.8-2.3 2-1.4.7-2.3 2.4.1Zm-1 9.6L4.9 8.3l-1 1L7 12.4l5.2-5.2-1-1Z" />
-                </svg>
-                {PARTNER_BADGE[locale?.startsWith("en") ? "en" : "es"]}
-              </span>
+              <PartnerBadge label={PARTNER_BADGE[locale?.startsWith("en") ? "en" : "es"]} />
             )}
           </span>
 
