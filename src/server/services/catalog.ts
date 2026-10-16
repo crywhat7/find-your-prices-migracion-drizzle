@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
 import { getSupabaseAdmin } from '@/server/db/supabase';
 import { wordsToTsQuery } from '@/server/services/searchSynonyms';
@@ -1341,6 +1342,29 @@ export interface ProductDetail extends Product {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * Las columnas de `store_products` que la ficha usa, y ninguna más.
+ *
+ * Con `*` venían también `raw`, `shipping_info`, `location_availability` y
+ * otra treintena de campos que nadie pinta: JSON de más que viaja desde
+ * Supabase y que el Worker tiene que parsear. Una columna nueva en la ficha
+ * se agrega acá. Es un literal y no un `join`: los tipos de supabase-js leen
+ * el texto del `select` y con un `string` cualquiera dan error.
+ */
+const PRODUCT_DETAIL_SELECT = `
+  id, public_slug, external_id, name, description, url,
+  price, currency, list_price, discount_percent, discount_amount, member_price,
+  availability, in_stock, stock_quantity, min_order_quantity,
+  category_raw, category_path, brand_raw, primary_image_url, images,
+  rating_average, rating_count,
+  sku, gtin, barcode_raw, model, color, size, condition,
+  unit_measure_name, tax_rate, tax_included, warranty_months, weight_grams,
+  specs, attributes, badges,
+  first_seen_at, last_seen_at, last_price_change_at,
+  stores!inner(name, slug, logo_url, is_active),
+  store_categories(name, categories(slug, name)),
+  store_product_variants(external_id, name, color, size, price, list_price, in_stock)`;
+
+/**
  * Ficha completa. Devuelve `null` si el artículo no existe o dejó de estar
  * activo, para que la ruta responda 404 en vez de una página vacía.
  *
@@ -1350,11 +1374,15 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * compartidos— necesita resolver el uuid para poder redirigir. Distinguirlos
  * por la forma del texto evita un parámetro que habría que acertar en cada
  * llamada.
+ *
+ * Envuelta en `cache` de React: `generateMetadata` y la página la piden con
+ * los mismos argumentos, y sin esto cada ficha armada de cero hacía todas sus
+ * consultas dos veces, con el Worker de Cloudflare contando cada milisegundo.
  */
-export async function getProductDetail(
+export const getProductDetail = cache(async (
   key: string,
   locale: CatalogLocale = 'es',
-): Promise<ProductDetail | null> {
+): Promise<ProductDetail | null> => {
   // `null` significa "no existe" y la ruta responde 404, que con
   // `revalidate` queda cacheado diez minutos. Un fallo de red NO es un 404:
   // se propaga para que la ficha conserve su última versión buena.
@@ -1363,12 +1391,7 @@ export async function getProductDetail(
 
     const { data, error } = await db
       .from('store_products')
-      .select(
-        `*,
-         stores!inner(name, slug, logo_url, is_active),
-         store_categories(name, categories(slug, name)),
-         store_product_variants(external_id, name, color, size, price, list_price, in_stock)`,
-      )
+      .select(PRODUCT_DETAIL_SELECT)
       .eq(UUID_PATTERN.test(key) ? 'id' : 'public_slug', key)
       .eq('is_active', true)
       .maybeSingle();
@@ -1376,18 +1399,29 @@ export async function getProductDetail(
     if (error) throw new Error(error.message);
     if (!data) return null;
 
-    const row = data as Record<string, never> & Record<string, unknown>;
+    const row = data as Record<string, unknown>;
     const store = row.stores as { name: string; slug: string } | null;
     if (!store) return null;
 
     // El histórico se pide aparte: es una serie que puede ser larga y no tiene
-    // sentido arrastrarla en el mismo join.
-    const { data: history, error: historyError } = await db
-      .from('price_history')
-      .select('scraped_at, price, list_price, previous_price, price_delta, in_stock')
-      .eq('store_product_id', String(row.id))
-      .order('scraped_at', { ascending: true })
-      .limit(200);
+    // sentido arrastrarla en el mismo join. Va en paralelo con la tasa de
+    // cambio: ninguna depende de la otra.
+    const currency = String(row.currency ?? 'HNL');
+    const needsRate = currency !== 'HNL' && row.price !== null && row.price !== undefined;
+    const [
+      { data: history, error: historyError },
+      rateResult,
+    ] = await Promise.all([
+      db
+        .from('price_history')
+        .select('scraped_at, price, list_price, previous_price, price_delta, in_stock')
+        .eq('store_product_id', String(row.id))
+        .order('scraped_at', { ascending: true })
+        .limit(200),
+      needsRate
+        ? db.from('exchange_rates').select('rate_to_hnl').eq('currency', currency).maybeSingle()
+        : null,
+    ]);
     if (historyError) throw new Error(historyError.message);
 
     const priceHistory: PricePointRow[] = ((history ?? []) as Record<string, unknown>[]).map(
@@ -1408,14 +1442,8 @@ export async function getProductDetail(
     // Equivalente en lempiras para precios en otra moneda. Si la tasa no está
     // (o 0054 no corrió), la ficha solo muestra el precio original.
     let priceInHnl: ProductDetail['priceInHnl'];
-    const currency = String(row.currency ?? 'HNL');
-    if (currency !== 'HNL' && row.price !== null && row.price !== undefined) {
-      const { data: rate } = await db
-        .from('exchange_rates')
-        .select('rate_to_hnl')
-        .eq('currency', currency)
-        .maybeSingle();
-      const value = Number(rate?.rate_to_hnl);
+    if (rateResult) {
+      const value = Number(rateResult.data?.rate_to_hnl);
       if (Number.isFinite(value) && value > 0) {
         priceInHnl = { amount: Math.round(Number(row.price) * value * 100) / 100, rate: value };
       }
@@ -1519,7 +1547,7 @@ export async function getProductDetail(
       highestPrice: observedPrices.length ? Math.max(...observedPrices) : undefined,
     };
   });
-}
+});
 
 /**
  * El slug público de una ficha, a partir de su uuid.
