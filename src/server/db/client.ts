@@ -1,4 +1,4 @@
 import 'server-only';
 
-export { getDb, hasDatabaseConfig, type Db } from './connection';
+export { getDb, hasDatabaseConfig, describeConnection, type Db, type ConnectionInfo } from './connection';
 export * as schema from './schema';

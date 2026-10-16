@@ -7,6 +7,8 @@ import { countNewApplications } from '@/server/services/affiliates';
 import { countOpenErrorGroups } from '@/server/errors/errorLog';
 import { VersionPanel } from '@/features/version/VersionPanel';
 import { hasAdminSession } from '@/server/admin/session';
+import { getDatabaseStatus } from '@/server/db/status';
+import { DatabaseStatusCard } from '@/features/admin-shared/DatabaseStatusCard';
 
 /**
  * Hub del panel: la puerta a cada herramienta y los botones de caché.
@@ -75,7 +77,11 @@ export default async function AdminHubPage({ searchParams }: PageProps) {
   if (!(await hasAdminSession())) return null;
   const { cache, paths } = await searchParams;
   const refreshed = cache && isCacheScope(cache) ? CACHE_SCOPES.find((info) => info.scope === cache) : null;
-  const [newApplications, openErrors] = await Promise.all([countNewApplications(), countOpenErrorGroups()]);
+  const [newApplications, openErrors, dbStatus] = await Promise.all([
+    countNewApplications(),
+    countOpenErrorGroups(),
+    getDatabaseStatus(),
+  ]);
 
   return (
     <div className="min-h-screen bg-[var(--bg)]">
@@ -146,6 +152,19 @@ export default async function AdminHubPage({ searchParams }: PageProps) {
             </p>
             <div className="mt-6">
               <VersionPanel />
+            </div>
+          </section>
+
+          <section aria-labelledby="database-heading">
+            <h2 id="database-heading" className="text-[1.25rem] font-semibold tracking-[-0.02em] text-[var(--text)]">
+              Base de datos
+            </h2>
+            <p className="mt-1 max-w-[70ch] text-[0.8125rem] leading-[1.55] text-[var(--text-tertiary)]">
+              Cada carga de esta página hace una consulta real por Drizzle. Todas las consultas del sitio van por este
+              camino; supabase-js queda solo para subir y borrar imágenes en Storage.
+            </p>
+            <div className="mt-6">
+              <DatabaseStatusCard status={dbStatus} />
             </div>
           </section>
 

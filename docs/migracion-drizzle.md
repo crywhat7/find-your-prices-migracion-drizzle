@@ -108,6 +108,11 @@ Ojo con esto para producción:
   Variables. En el Worker ya en marcha la conexión sale de Hyperdrive.
 - GitHub Actions necesita el secret `DATABASE_URL` (pooler de Supabase: los
   runners no tienen IPv6 y la conexión directa de Supabase es solo IPv6).
+- Lo mismo en **Vercel**: con `db.<ref>.supabase.co` el build falla con
+  `getaddrinfo ENOTFOUND` al prerenderizar (p. ej. `/aliados`). `DATABASE_URL`
+  tiene que ser el "Transaction pooler" (`aws-X-ca-central-1.pooler.supabase.com:6543`,
+  usuario `postgres.<ref>`). `getDb()` corta con un mensaje claro si en
+  Vercel/CI recibe la conexión directa.
 - Verificar los límites de Hyperdrive y de conexiones TCP en el plan Free de
   Workers antes del corte.
 

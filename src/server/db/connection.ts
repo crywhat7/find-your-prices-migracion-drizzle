@@ -49,6 +49,29 @@ function createDb(connectionString: string, opts: { hyperdrive: boolean }) {
   return drizzle({ client, schema });
 }
 
+/**
+ * La conexión directa de Supabase (`db.<ref>.supabase.co`) solo tiene IPv6.
+ * Vercel, GitHub Actions y Workers Builds no salen por IPv6, así que ahí falla
+ * con un `getaddrinfo ENOTFOUND` que no dice nada. Mejor cortar con la causa.
+ */
+function assertReachableHost(connectionString: string): void {
+  const onIpv4OnlyHost = Boolean(process.env.VERCEL || process.env.CI || process.env.GITHUB_ACTIONS);
+  if (!onIpv4OnlyHost) return;
+  let host: string;
+  try {
+    host = new URL(connectionString).hostname;
+  } catch {
+    return;
+  }
+  if (/^db\.[a-z0-9]+\.supabase\.co$/i.test(host)) {
+    throw new Error(
+      `DATABASE_URL apunta a ${host}, la conexión directa de Supabase, que solo tiene IPv6 y no se alcanza desde este entorno (Vercel/CI). ` +
+        'Usá el pooler de Supavisor: Supabase → Connect → "Transaction pooler" ' +
+        '(postgresql://postgres.<ref>:<password>@aws-X-<region>.pooler.supabase.com:6543/postgres).',
+    );
+  }
+}
+
 function isTransactionPooler(connectionString: string): boolean {
   try {
     return new URL(connectionString).port === '6543';
@@ -82,6 +105,39 @@ export function hasDatabaseConfig(): boolean {
 const perRequest = new WeakMap<object, Db>();
 let processDb: Db | null = null;
 
+export type ConnectionSource = 'hyperdrive' | 'database_url' | 'none';
+export type ConnectionMode = 'hyperdrive' | 'transaction-pooler' | 'session-pooler' | 'direct' | 'unknown';
+
+export interface ConnectionInfo {
+  source: ConnectionSource;
+  mode: ConnectionMode;
+  host: string | null;
+  port: string | null;
+}
+
+/** De dónde sale la conexión que usaría `getDb()` ahora mismo. Sin credenciales. */
+export function describeConnection(): ConnectionInfo {
+  const worker = workerContext();
+  const source: ConnectionSource = worker ? 'hyperdrive' : process.env.DATABASE_URL ? 'database_url' : 'none';
+  const raw = worker?.hyperdrive.connectionString ?? process.env.DATABASE_URL;
+  if (!raw) return { source, mode: 'unknown', host: null, port: null };
+
+  let host: string | null = null;
+  let port: string | null = null;
+  try {
+    const url = new URL(raw);
+    host = url.hostname;
+    port = url.port || '5432';
+  } catch {
+    return { source, mode: 'unknown', host: null, port: null };
+  }
+
+  let mode: ConnectionMode = 'direct';
+  if (worker) mode = 'hyperdrive';
+  else if (host.endsWith('.pooler.supabase.com')) mode = port === '6543' ? 'transaction-pooler' : 'session-pooler';
+  return { source, mode, host, port };
+}
+
 export function getDb(): Db {
   const worker = workerContext();
   if (worker) {
@@ -101,6 +157,7 @@ export function getDb(): Db {
       'Falta la variable de entorno DATABASE_URL (y no hay binding HYPERDRIVE). Copiala desde .env.example a .env.local.',
     );
   }
+  assertReachableHost(url);
   processDb = createDb(url, { hyperdrive: false });
   return processDb;
 }
