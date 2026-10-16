@@ -39,6 +39,9 @@ function createDb(connectionString: string, opts: { hyperdrive: boolean }) {
     max: poolSize(opts.hyperdrive),
     // En serverless no conviene dejar conexiones colgadas ocupando cupo del pooler.
     idle_timeout: 20,
+    // Sin esto una conexión que no llega espera 30 s por intento, y en el
+    // build cada página se cuelga hasta el límite de 60 s sin decir por qué.
+    connect_timeout: 10,
     // Ahorra un viaje por conexión. Los tipos propios del esquema (enums) llegan
     // como texto, que es lo que la app espera.
     fetch_types: false,

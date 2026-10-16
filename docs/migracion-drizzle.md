@@ -115,6 +115,10 @@ Ojo con esto para producción:
   Vercel/CI recibe la conexión directa. El modo sesión (5432) tampoco sirve
   en Vercel: corta en 15 clientes (`EMAXCONNSESSION`) y el build lo agota. En
   Vercel/CI el pool es de 3 conexiones por proceso (`DATABASE_POOL_MAX`).
+- `npm run build` corre antes `scripts/db-check.mjs` (`prebuild`, solo en
+  Vercel/CI): prueba `DATABASE_URL` con timeout de 10 s y, si es el pooler y
+  falla, prueba el otro clúster (`aws-0`/`aws-1`) y dice cuál responde. Sin
+  esto, una base inalcanzable cuelga cada página 60 s × 3 intentos.
 - Verificar los límites de Hyperdrive y de conexiones TCP en el plan Free de
   Workers antes del corte.
 
