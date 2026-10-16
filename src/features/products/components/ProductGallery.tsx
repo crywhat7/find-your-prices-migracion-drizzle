@@ -50,6 +50,7 @@ export function ProductGallery({ images, productName, discountPercent }: Product
             src={active.url}
             alt={active.altText ?? productName}
             loading="eager"
+            fetchPriority="high"
             className={`aspect-square w-full object-contain p-6 transition-transform duration-[var(--dur-slow)] ease-[var(--ease-out-expo)] ${
               isZoomed ? "scale-[1.6]" : "scale-100"
             }`}

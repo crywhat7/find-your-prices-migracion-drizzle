@@ -1,14 +1,12 @@
 import type { ReactNode } from "react";
 import { BackToTop } from "@/components/shared/BackToTop";
-import { CrumbleEasterEgg } from "@/components/shared/CrumbleEasterEgg";
+import { DeferredWidgets } from "@/components/layout/DeferredWidgets";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { SiteNav } from "@/components/layout/SiteNav";
 import { LocaleProvider } from "@/features/i18n/LocaleContext";
 import { ProductClickTracker } from "@/features/products/ProductClickTracker";
-import { PartnerPromoPopup } from "@/features/affiliates/PartnerPromoPopup";
 import { PageViewTracker } from "@/features/analytics/PageViewTracker";
 import { ClientErrorListener } from "@/features/errors/ClientErrorListener";
-import { VersionWatcher } from "@/features/version/VersionWatcher";
 import type { Locale } from "@/features/i18n/translate";
 import { ThemeProvider } from "@/features/theme/ThemeProvider";
 
@@ -70,17 +68,9 @@ export function PageLayout({ locale, localePaths, children }: PageLayoutProps) {
           <PageViewTracker />
           {/* Y los errores del navegador van a /admin/errores. */}
           <ClientErrorListener />
-          {/* Avisa si esta pestaña quedó con una versión vieja del sitio. */}
-          <VersionWatcher locale={locale} />
-          {/* Flyer de Eneba: al entrar y cada 3-8 minutos. */}
-          <PartnerPromoPopup
-            locale={locale}
-            label={PARTNER_POPUP[locale].label}
-            alt={PARTNER_POPUP[locale].alt}
-            closeLabel={PARTNER_POPUP[locale].close}
-          />
-          {/* Easter egg: Ctrl/Cmd + 0 + 0 + 0. */}
-          <CrumbleEasterEgg />
+          {/* Flyer de Eneba, aviso de versión nueva y easter egg: se cargan
+              después de hidratar (ver `DeferredWidgets`). */}
+          <DeferredWidgets locale={locale} popup={PARTNER_POPUP[locale]} />
         </div>
       </LocaleProvider>
     </ThemeProvider>

@@ -12,6 +12,12 @@ interface ProductImageProps {
   /** Clases del placeholder. Por defecto rellena la placa entera. */
   placeholderClassName?: string;
   loading?: "lazy" | "eager";
+  /**
+   * `"high"` solo para la foto que es el elemento más grande de la pantalla
+   * (la principal de la ficha): el navegador la pide antes que el resto y la
+   * página termina de pintarse antes (LCP).
+   */
+  fetchPriority?: "high" | "low" | "auto";
 }
 
 /**
@@ -29,6 +35,7 @@ export function ProductImage({
   className = "",
   placeholderClassName = "h-full w-full object-cover",
   loading = "lazy",
+  fetchPriority,
 }: ProductImageProps) {
   // Se guarda QUÉ url falló y no un booleano: cuando cambia `src` (la galería
   // al elegir otra miniatura) el fallo anterior deja de aplicar solo.
@@ -57,6 +64,10 @@ export function ProductImage({
       src={src}
       alt={alt}
       loading={loading}
+      fetchPriority={fetchPriority}
+      // La foto prioritaria se decodifica sin esperar: es la que define cuándo
+      // la página se ve terminada. Las demás, sin frenar el hilo principal.
+      decoding={fetchPriority === "high" ? undefined : "async"}
       onError={() => setFailedSrc(src)}
       className={className}
     />

@@ -13,13 +13,23 @@ const spaceGrotesk = Space_Grotesk({
   display: "swap",
 });
 
-/** Contrapunto editorial: sólo para la línea nativa del hero. */
+/**
+ * Contrapunto editorial: la línea nativa del hero, títulos de categorías y
+ * tiendas, iniciales de las placas sin imagen.
+ *
+ * Sin precarga: son dos archivos (~30 KB) que se pedían en TODAS las páginas,
+ * y la ficha de producto —la que más visitas recibe desde Google— no la usa.
+ * Ahí competían con la foto principal en un teléfono con mala señal. Donde sí
+ * se usa, el navegador la pide al encontrarla en el CSS; mientras llega se ve
+ * la de respaldo con las métricas ajustadas, así que el texto no salta.
+ */
 const instrumentSerif = Instrument_Serif({
   variable: "--font-editorial",
   subsets: ["latin"],
   weight: "400",
   style: ["normal", "italic"],
   display: "swap",
+  preload: false,
 });
 
 /**
